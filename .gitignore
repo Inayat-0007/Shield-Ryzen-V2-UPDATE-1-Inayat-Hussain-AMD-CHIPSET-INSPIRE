@@ -10,15 +10,20 @@ venv/
 # VS Code
 .vscode/
 
-# Project Artifacts (Large Files - Optional)
-# Uncomment these if you want to exclude weights from git (recommended due to size limits)
+# Project Artifacts (Large Files — managed by Git LFS)
 # ffpp_c23.pth
 # shield_ryzen_v2.onnx
 # shield_ryzen_int8.onnx
 # face_landmarker.task
 
+# Intermediate build artifacts
+shield_ryzen_v2_prep.onnx
+
 # Calibration Data
 calibration_data/
+
+# Debug / Error screenshots
+errors/
 
 # OS specific
 .DS_Store

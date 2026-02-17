@@ -12,10 +12,13 @@ import os
 import time
 import sys
 
-print("=" * 60)
-print("  SHIELD-RYZEN LEVEL 3 — INT8 QUANTIZATION ENGINE")
-print("=" * 60)
-print()
+from shield_utils import preprocess_face, setup_logger, CONFIG, MEAN, STD, INPUT_SIZE
+
+log = setup_logger('Quantizer')
+
+log.info("=" * 60)
+log.info("  SHIELD-RYZEN LEVEL 3 — INT8 QUANTIZATION ENGINE")
+log.info("=" * 60)
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 fp32_model = os.path.join(script_dir, 'shield_ryzen_v2.onnx')
@@ -63,19 +66,7 @@ landmarker_options = FaceLandmarkerOptions(
     min_face_detection_confidence=0.4,
 )
 
-MEAN = np.array([0.5, 0.5, 0.5], dtype=np.float32)
-STD  = np.array([0.5, 0.5, 0.5], dtype=np.float32)
-INPUT_SIZE = 299
 TARGET_FRAMES = 50
-
-def preprocess_face_np(face_crop):
-    """Preprocess face for Xception: 299x299, [-1, 1], NCHW."""
-    face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-    face_resized = cv2.resize(face_rgb, (INPUT_SIZE, INPUT_SIZE))
-    face_float = face_resized.astype(np.float32) / 255.0
-    face_norm = (face_float - MEAN) / STD
-    face_chw = np.transpose(face_norm, (2, 0, 1))
-    return np.expand_dims(face_chw, axis=0).astype(np.float32)
 
 os.makedirs(calib_dir, exist_ok=True)
 calibration_inputs = []
@@ -121,7 +112,7 @@ with FaceLandmarker.create_from_options(landmarker_options) as landmarker:
                 if face_crop.size == 0:
                     continue
 
-                tensor = preprocess_face_np(face_crop)
+                tensor = preprocess_face(face_crop)
                 calibration_inputs.append(tensor)
                 
                 cv2.imwrite(os.path.join(calib_dir, f"calib_{collected:03d}.jpg"), face_crop)

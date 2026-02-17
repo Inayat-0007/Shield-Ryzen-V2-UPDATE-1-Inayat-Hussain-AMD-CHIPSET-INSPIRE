@@ -1,0 +1,31 @@
+# ═══════════════════════════════════════════════════════════════
+#  Shield-Ryzen V1 — Configuration
+#  AMD Slingshot 2026 | Developer: Inayat Hussain
+# ═══════════════════════════════════════════════════════════════
+#
+#  Tune security parameters without modifying logic code.
+#  Changes here apply to ALL engines (V2, V3).
+# ═══════════════════════════════════════════════════════════════
+
+security:
+  confidence_threshold: 0.89    # Real verification bar (89% rule)
+  blink_threshold: 0.21         # EAR below this = eyes closed (blink)
+  blink_time_window: 10         # Liveness check window (seconds)
+  laplacian_threshold: 50       # Texture smoothness guard
+
+preprocessing:
+  input_size: 299               # Xception input resolution (299x299)
+  mean: [0.5, 0.5, 0.5]        # FF++ standard normalization
+  std:  [0.5, 0.5, 0.5]        # FF++ standard normalization
+
+landmarks:
+  # MediaPipe 478-point mesh eye indices
+  left_eye:  [33, 160, 158, 133, 153, 144]    # outer, upper1, upper2, inner, lower2, lower1
+  right_eye: [362, 385, 387, 263, 373, 380]   # outer, upper1, upper2, inner, lower2, lower1
+
+mediapipe:
+  num_faces: 2
+  min_face_detection_confidence: 0.5
+  min_face_presence_confidence: 0.5
+  min_tracking_confidence: 0.5
+  landmarker_model: "face_landmarker.task"

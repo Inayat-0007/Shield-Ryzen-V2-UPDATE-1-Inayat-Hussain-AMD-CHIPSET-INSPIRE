@@ -15,33 +15,20 @@ import onnxruntime as ort
 import mediapipe as mp
 import os
 import time
-import math
 
-# ═══════════════════════════════════════════════════════════════
-#  SHIELD-RYZEN V2 — UNIVERSAL ONNX SECURITY MODE
-#  No PyTorch. No TensorFlow. Pure inference engine.
-# ═══════════════════════════════════════════════════════════════
+from shield_utils import (
+    preprocess_face, calculate_ear, check_texture, classify_face,
+    setup_logger, CONFIG,
+    CONFIDENCE_THRESHOLD, BLINK_THRESHOLD, BLINK_TIME_WINDOW,
+    LAPLACIAN_THRESHOLD, LEFT_EYE, RIGHT_EYE,
+)
 
-# ─── Constants ────────────────────────────────────────────────
-CONFIDENCE_THRESHOLD = 0.89    # 89% rule
-BLINK_THRESHOLD = 0.21         # EAR below this = eyes closed
-BLINK_TIME_WINDOW = 10         # Seconds
-LAPLACIAN_THRESHOLD = 50       # Texture guard
-
-# Eye landmarks (MediaPipe 478-point mesh)
-LEFT_EYE  = [33, 160, 158, 133, 153, 144]
-RIGHT_EYE = [362, 385, 387, 263, 373, 380]
-
-# Xception preprocessing constants (FF++ standard)
-MEAN = np.array([0.5, 0.5, 0.5], dtype=np.float32)
-STD  = np.array([0.5, 0.5, 0.5], dtype=np.float32)
-INPUT_SIZE = 299
+log = setup_logger('ShieldV2')
 
 # ─── 1. Setup ONNX Runtime Session (GPU) ─────────────────────
 script_dir = os.path.dirname(os.path.abspath(__file__))
 onnx_path = os.path.join(script_dir, 'shield_ryzen_v2.onnx')
 
-# Prioritize GPU providers
 providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
 session_options = ort.SessionOptions()
 session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -49,9 +36,9 @@ session_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE
 session = ort.InferenceSession(onnx_path, sess_options=session_options, providers=providers)
 active_provider = session.get_providers()[0]
 
-print(f"🖥️  Provider: {active_provider}")
-print(f"📦  Model: {onnx_path}")
-print(f"🔢  Input: {session.get_inputs()[0].shape}")
+log.info("Provider: %s", active_provider)
+log.info("Model:    %s", onnx_path)
+log.info("Input:    %s", session.get_inputs()[0].shape)
 
 # ─── 2. Setup MediaPipe FaceLandmarker ────────────────────────
 BaseOptions = mp.tasks.BaseOptions
@@ -59,70 +46,30 @@ FaceLandmarker = mp.tasks.vision.FaceLandmarker
 FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
-landmarker_path = os.path.join(script_dir, 'face_landmarker.task')
+mp_cfg = CONFIG['mediapipe']
+landmarker_path = os.path.join(script_dir, mp_cfg['landmarker_model'])
 landmarker_options = FaceLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=landmarker_path),
     running_mode=VisionRunningMode.VIDEO,
-    num_faces=2,
-    min_face_detection_confidence=0.5,
-    min_face_presence_confidence=0.5,
-    min_tracking_confidence=0.5,
+    num_faces=mp_cfg['num_faces'],
+    min_face_detection_confidence=mp_cfg['min_face_detection_confidence'],
+    min_face_presence_confidence=mp_cfg['min_face_presence_confidence'],
+    min_tracking_confidence=mp_cfg['min_tracking_confidence'],
 )
 
-# ─── 3. Helper Functions (Pure NumPy/OpenCV) ─────────────────
-def preprocess_face(face_crop):
-    """Preprocess face crop for Xception: resize, normalize to [-1, 1].
-    Pure NumPy — no PyTorch transforms needed."""
-    # Resize to 299x299
-    face_rgb = cv2.cvtColor(face_crop, cv2.COLOR_BGR2RGB)
-    face_resized = cv2.resize(face_rgb, (INPUT_SIZE, INPUT_SIZE))
-    
-    # Convert to float32 [0, 1]
-    face_float = face_resized.astype(np.float32) / 255.0
-    
-    # Normalize: (pixel - mean) / std → [-1, 1]
-    face_norm = (face_float - MEAN) / STD
-    
-    # Transpose HWC → CHW and add batch dimension: [1, 3, 299, 299]
-    face_chw = np.transpose(face_norm, (2, 0, 1))
-    return np.expand_dims(face_chw, axis=0).astype(np.float32)
-
-def calculate_ear(landmarks, eye_indices):
-    """Eye Aspect Ratio from 6 landmark points."""
-    p1 = landmarks[eye_indices[0]]
-    p2 = landmarks[eye_indices[1]]
-    p3 = landmarks[eye_indices[2]]
-    p4 = landmarks[eye_indices[3]]
-    p5 = landmarks[eye_indices[4]]
-    p6 = landmarks[eye_indices[5]]
-    
-    v1 = math.sqrt((p2.x - p6.x)**2 + (p2.y - p6.y)**2)
-    v2 = math.sqrt((p3.x - p5.x)**2 + (p3.y - p5.y)**2)
-    h_dist = math.sqrt((p1.x - p4.x)**2 + (p1.y - p4.y)**2)
-    
-    if h_dist == 0:
-        return 0.3
-    return (v1 + v2) / (2.0 * h_dist)
-
-def check_texture(face_crop):
-    """Laplacian variance — low = too smooth."""
-    gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
-    return cv2.Laplacian(gray, cv2.CV_64F).var()
-
-# ─── 4. Start Security Mode ──────────────────────────────────
+# ─── 3. Start Security Mode ──────────────────────────────────
 cap = cv2.VideoCapture(0)
 
-print()
-print("═" * 55)
-print("  🛡️  SHIELD-RYZEN V2 — ONNX SECURITY MODE")
-print("═" * 55)
-print(f"  Engine:     ONNX Runtime {ort.__version__} (NO PyTorch)")
-print(f"  Provider:   {active_provider}")
-print(f"  Threshold:  {CONFIDENCE_THRESHOLD*100:.0f}%")
-print(f"  Blink:      {BLINK_TIME_WINDOW}s window")
-print(f"  Texture:    Laplacian > {LAPLACIAN_THRESHOLD}")
-print("  Press ESC to exit.")
-print("═" * 55)
+log.info("═" * 55)
+log.info("  🛡️  SHIELD-RYZEN V2 — ONNX SECURITY MODE")
+log.info("═" * 55)
+log.info("  Engine:     ONNX Runtime %s (NO PyTorch)", ort.__version__)
+log.info("  Provider:   %s", active_provider)
+log.info("  Threshold:  %d%%", CONFIDENCE_THRESHOLD * 100)
+log.info("  Blink:      %ds window", BLINK_TIME_WINDOW)
+log.info("  Texture:    Laplacian > %d", LAPLACIAN_THRESHOLD)
+log.info("  Press ESC to exit.")
+log.info("═" * 55)
 
 frame_timestamp_ms = 0
 fps_counter = 0
@@ -196,31 +143,17 @@ with FaceLandmarker.create_from_options(landmarker_options) as landmarker:
 
                 # ── ONNX Inference (GPU) ──
                 input_tensor = preprocess_face(face_crop)
-                
+
                 inf_start = time.perf_counter()
                 output = session.run(None, {'input': input_tensor})[0]
                 inference_ms = (time.perf_counter() - inf_start) * 1000
-                
+
                 # Class mapping: Index 0 = Fake, Index 1 = Real
                 fake_prob = float(output[0, 0])
                 real_prob = float(output[0, 1])
 
-                # ══ SECURITY MODE CLASSIFICATION (3-Tier) ══
-                if fake_prob > 0.50:
-                    label = "CRITICAL: FAKE DETECTED"
-                    color = (0, 0, 255)
-                elif real_prob < CONFIDENCE_THRESHOLD:
-                    label = "WARNING: LOW CONFIDENCE"
-                    color = (0, 200, 255)
-                elif not liveness_ok:
-                    label = "LIVENESS FAILED"
-                    color = (0, 165, 255)
-                elif not texture_ok:
-                    label = "SMOOTHNESS WARNING"
-                    color = (0, 200, 255)
-                else:
-                    label = "SHIELD: VERIFIED REAL"
-                    color = (0, 255, 0)
+                # ══ SECURITY MODE CLASSIFICATION ══
+                label, color, tier = classify_face(fake_prob, real_prob, liveness_ok, texture_ok)
 
                 # Draw
                 cv2.rectangle(frame, (x_min, y_min), (x_max, y_max), color, 2)
@@ -243,12 +176,12 @@ with FaceLandmarker.create_from_options(landmarker_options) as landmarker:
         cv2.rectangle(frame, (0, 0), (w, 55), (20, 20, 20), -1)
         cv2.putText(frame, f"FPS: {fps_display:.1f} | ONNX | {active_provider}", (10, 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-        
+
         blink_color = (0, 255, 0) if blink_count > 0 else (0, 0, 255)
         blink_text = f"Blink: {'YES' if blink_count > 0 else 'NO'} ({blink_count} in {BLINK_TIME_WINDOW}s) | INF: {inference_ms:.1f}ms"
         cv2.putText(frame, blink_text, (10, 45),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, blink_color, 1)
-        
+
         cv2.putText(frame, "V2 ONNX ENGINE", (w - 180, 20),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 200), 2)
         cv2.putText(frame, f"Threshold: {CONFIDENCE_THRESHOLD*100:.0f}%", (w - 170, 45),
@@ -259,3 +192,4 @@ with FaceLandmarker.create_from_options(landmarker_options) as landmarker:
 
 cap.release()
 cv2.destroyAllWindows()
+log.info("Shield-Ryzen V2 — Session ended.")
