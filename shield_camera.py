@@ -52,12 +52,16 @@ class ShieldCamera:
     def __init__(
         self,
         camera_id: int = 0,
+        width: int = 1280,
+        height: int = 720,
         backend: int = cv2.CAP_DSHOW,
     ) -> None:
         """Initialize camera with explicit backend and minimal buffer.
 
         Args:
             camera_id: System camera index (default 0 = primary).
+            width: Target width (default 1280).
+            height: Target height (default 720).
             backend: OpenCV capture backend. cv2.CAP_DSHOW on Windows
                      to avoid MSMF buffering; use cv2.CAP_V4L2 on Linux.
         """
@@ -67,6 +71,10 @@ class ShieldCamera:
 
         # Open capture
         self._cap: cv2.VideoCapture = cv2.VideoCapture(camera_id, backend)
+
+        # Set resolution eagerly to minimize initial latency/renegotiation
+        self._cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+        self._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
         # Set buffer size to 1 to minimize latency (security-critical)
         # WHY: Default buffer is 3-5 frames → 30-80 ms stale data
@@ -176,7 +184,27 @@ class ShieldCamera:
             "last_valid_frame_age_ms": round(last_age_ms, 2),
             "resolution": self._resolution,
             "backend": self._backend_name,
+            "fps_status": self._check_fps_consistency(),
         }
+
+    def _check_fps_consistency(self) -> str:
+        """Analyze frame time variance to detect lag spikes."""
+        if len(self._frame_times) < 10:
+            return "STABLE" # Not enough data
+
+        # Compute intervals
+        intervals = [self._frame_times[i] - self._frame_times[i-1] 
+                     for i in range(1, len(self._frame_times))]
+        
+        avg_dt = sum(intervals) / len(intervals)
+        if avg_dt > 0.1: # < 10 FPS
+            return "LAG"
+        
+        variance = np.var(intervals)
+        if variance > 0.002: # Jitter threshold
+            return "UNSTABLE"
+            
+        return "STABLE"
 
     def is_opened(self) -> bool:
         """Whether the underlying capture device is open."""

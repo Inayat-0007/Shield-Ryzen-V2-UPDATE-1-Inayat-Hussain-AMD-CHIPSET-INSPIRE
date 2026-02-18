@@ -126,12 +126,18 @@ class TestShieldEngine(unittest.TestCase):
         face1.face_crop_299 = np.zeros((1,3,299,299), dtype=np.float32)
         face1.face_crop_raw = np.zeros((50,50,3), dtype=np.uint8)
         face1.landmarks = np.zeros((478,2))
+        face1.head_pose = (0.0, 0.0, 0.0)
+        face1.is_frontal = True
+        face1.occlusion_score = 0.0
         
         face2 = MagicMock(spec=FaceDetection)
         face2.bbox = (60,60,40,40)
         face2.face_crop_299 = np.zeros((1,3,299,299), dtype=np.float32)
         face2.face_crop_raw = np.zeros((40,40,3), dtype=np.uint8)
         face2.landmarks = np.zeros((478,2))
+        face2.head_pose = (0.0, 0.0, 0.0)
+        face2.is_frontal = True
+        face2.occlusion_score = 0.0
         
         mock_pipe = MockPipeline.return_value
         mock_pipe.detect_faces.return_value = [face1, face2]
@@ -150,7 +156,7 @@ class TestShieldEngine(unittest.TestCase):
             engine = ShieldEngine(self.config)
             # Fix: Return Low Fake Probability (0.1) so result is REAL
             # calibrated = [ProbReal, ProbFake]
-            MockCalib.return_value.calibrate.return_value = [0.9, 0.1]
+            MockCalib.return_value.calibrate.return_value = [0.1, 0.9]
             
             result = engine.process_frame()
             
@@ -158,7 +164,7 @@ class TestShieldEngine(unittest.TestCase):
             self.assertEqual(result.face_results[0].state, "REAL") 
             
             # Re-run process with High Fake Prob
-            MockCalib.return_value.calibrate.return_value = [0.1, 0.9]
+            MockCalib.return_value.calibrate.return_value = [0.9, 0.1]
             result = engine.process_frame()
             # Hysteresis prevents immediate flip unless consistent?
             # StateMachine needs continuous updates.
@@ -268,6 +274,9 @@ class TestShieldEngine(unittest.TestCase):
         face.face_crop_299 = np.zeros((1,3,299,299), dtype=np.float32)
         face.face_crop_raw = np.zeros((1,1,3), dtype=np.uint8)
         face.landmarks = np.zeros((478,2))
+        face.head_pose = (0.0, 0.0, 0.0)
+        face.is_frontal = True
+        face.occlusion_score = 0.0
         
         MockPipeline.return_value.detect_faces.return_value = [face]
         

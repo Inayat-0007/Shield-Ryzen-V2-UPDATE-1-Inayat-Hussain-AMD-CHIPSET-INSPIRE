@@ -1,37 +1,39 @@
+
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-.venv/
+*.so
+.env
+.venv
 env/
 venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Shield Ryzen Data
+data/
+logs/
+run_output*
+step*.py
+final_audit.py
+test_model_init.py
+*.tmp
+*.bak
+.vscode/
+.idea/
 *.log
 
-# VS Code
-.vscode/
+# Personal Audio & Video
+*.wav
+*.mp3
+*.mp4
+*.avi
+*.mov
 
-# Project Artifacts (Large Files — managed by Git LFS)
-# ffpp_c23.pth
-# shield_ryzen_v2.onnx
-# shield_ryzen_int8.onnx
-# face_landmarker.task
-
-# Intermediate build artifacts
-shield_ryzen_v2_prep.onnx
-
-# Calibration Data
-calibration_data/
-data/calibration_set_v2/
-
-# Generated reports & benchmarks
-benchmarks/*_results.json
-evaluation/*_results.json
-scripts/*_report.json
-logs/
-
-# Debug / Error screenshots
-errors/
-
-# OS specific
-.DS_Store
-Thumbs.db
+# User Photos (Privacy)
+*.jpg
+*.png
+*.jpeg
+calibration_faces/

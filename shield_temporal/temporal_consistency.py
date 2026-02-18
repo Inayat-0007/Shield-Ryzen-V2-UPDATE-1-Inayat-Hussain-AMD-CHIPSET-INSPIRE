@@ -93,3 +93,16 @@ class TemporalConsistencyAnalyzer:
             "lighting_consistency": round(lighting_consistency, 3),
             "is_ready": True
         }
+
+class SignalSmoother:
+    """Exponential smoothing for noisy signals (confidence, texture)."""
+    def __init__(self, alpha: float = 0.3):
+        self.alpha = alpha
+        self.value = None
+
+    def update(self, new_val: float) -> float:
+        if self.value is None:
+            self.value = new_val
+        else:
+            self.value = self.alpha * new_val + (1 - self.alpha) * self.value
+        return self.value

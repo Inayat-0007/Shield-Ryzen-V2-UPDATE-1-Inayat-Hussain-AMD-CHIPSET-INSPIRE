@@ -11,6 +11,7 @@ from typing import Optional, List, Tuple
 
 import numpy as np
 import cv2
+import onnxruntime as ort
 
 # Project imports
 from shield_camera import ShieldCamera
@@ -22,7 +23,7 @@ from shield_audio import ShieldAudio
 
 # Advanced Features (Part 8)
 try:
-    from shield_temporal.temporal_consistency import TemporalConsistencyAnalyzer
+    from shield_temporal.temporal_consistency import TemporalConsistencyAnalyzer, SignalSmoother
     from shield_frequency.frequency_analyzer import FrequencyAnalyzer
     from shield_audio_module.lip_sync_verifier import LipSyncVerifier
     from shield_liveness.challenge_response import ChallengeResponseLiveness
@@ -43,6 +44,50 @@ from shield_utils_core import (
 )
 
 # Master Protocol: BlinkTracker and DecisionStateMachine are now imported from shield_utils_core.py
+
+def create_optimized_session(model_path: str, device: str = "auto"):
+    sess_options = ort.SessionOptions()
+    sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    sess_options.execution_mode = ort.ExecutionMode.ORT_PARALLEL
+    sess_options.inter_op_num_threads = 2
+    sess_options.intra_op_num_threads = 4
+    sess_options.enable_mem_pattern = True
+    sess_options.enable_cpu_mem_arena = True
+
+    available = ort.get_available_providers()
+
+    if device == "auto":
+        if "DmlExecutionProvider" in available:
+            providers = [("DmlExecutionProvider", {"device_id": 0}),
+                         "CPUExecutionProvider"]
+        elif "CUDAExecutionProvider" in available:
+            providers = [("CUDAExecutionProvider", {
+                "device_id": 0,
+                "arena_extend_strategy": "kSameAsRequested",
+                "cudnn_conv_algo_search": "HEURISTIC"
+            }), "CPUExecutionProvider"]
+        else:
+            providers = ["CPUExecutionProvider"]
+    else:
+        providers = ["CPUExecutionProvider"]
+
+    session = ort.InferenceSession(model_path, sess_options=sess_options,
+                                   providers=providers)
+
+    # Warmup — first inference allocates memory
+    if session.get_inputs():
+        input_meta = session.get_inputs()[0]
+        # Handle dynamic axes safely
+        shape_def = input_meta.shape
+        safe_shape = [d if (isinstance(d, int) and d > 0) else 1 for d in shape_def]
+            
+        dummy = np.random.randn(*safe_shape).astype(np.float32)
+        try:
+            session.run(None, {input_meta.name: dummy})
+        except Exception as e:
+            print(f"Warmup warning: {e}")
+
+    return session
 
 class IdentityTracker:
     """Tracks face identities across frames using spatial consistency."""
@@ -105,10 +150,10 @@ class ShieldEngine:
         # 1. Initialize Camera (Target 720p for Speed)
         self.camera = ShieldCamera(
             camera_id=config.get("camera_id", 0),
+            width=1280,
+            height=720,
             backend=config.get("camera_backend", cv2.CAP_DSHOW)
         )
-        self.camera._cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-        self.camera._cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         
         # 2. Initialize Face Pipeline
         self.face_pipeline = ShieldFacePipeline(
@@ -117,6 +162,7 @@ class ShieldEngine:
         )
         
         # 3. Load Verified Model
+        self.model_type = "MOCK"  # Default until _init_model sets it
         model_path = config.get("model_path", "shield_ryzen_int8.onnx")
         self._init_model(model_path)
         
@@ -179,7 +225,7 @@ class ShieldEngine:
 
     def _verify_integrity_chain(self):
         """Self-audit of the normalization math and model handshake."""
-        print("🛡️ Auditing Input Pipeline Integrity...")
+        print("[AUDIT] Auditing Input Pipeline Integrity...")
         # Test 1: Normalization Handshake
         test_pixel = np.array([[[127]]], dtype=np.uint8) # Approx center
         # Mock a crop and preprocess
@@ -188,19 +234,19 @@ class ShieldEngine:
         val = tensor[0, 0, 0, 0]
         # (127/255.0 - 0.5) / 0.5 should be approx 0 (neutral point)
         if abs(val) > 0.1:
-            print(f"⚠️ Integrity Warning: Normalization Drift detected: {val:.4f}")
+            print(f"[WARN] Integrity Warning: Normalization Drift detected: {val:.4f}")
         else:
-            print("✅ Normalization Handshake: OK (Neutral Alignment)")
+            print("[OK] Normalization Handshake: OK (Neutral Alignment)")
 
         # Test 2: Model Key Verification
         if self.model_type == "ONNX":
-            print("✅ Model Integrity: ONNX Signature Verified")
+            print("[OK] Model Integrity: ONNX Signature Verified")
         
-        print("💎 Circular Validation Chain: SECURE")
+        print("[SECURE] Circular Validation Chain: SECURE")
 
     def _init_model(self, model_path: str):
         if not os.path.exists(model_path):
-            print(f"⚠️ Model {model_path} not found. Using Mock Inference.")
+            print(f"[WARN] Model {model_path} not found. Using Mock Inference.")
             self.model_type = "MOCK"
             return
 
@@ -208,12 +254,13 @@ class ShieldEngine:
             import onnxruntime as ort
             providers = ["VitisAIExecutionProvider", "CUDAExecutionProvider", "CPUExecutionProvider"]
             try:
-                self.session = ort.InferenceSession(model_path, providers=providers)
+                # self.session = ort.InferenceSession(model_path, providers=providers)
+                self.session = create_optimized_session(model_path, device="auto")
                 self.input_name = self.session.get_inputs()[0].name
                 self.model_type = "ONNX"
-                print(f"✅ Loaded INT8 Engine: {model_path} ({self.session.get_providers()[0]})")
+                print(f"[OK] Loaded INT8 Engine: {model_path} ({self.session.get_providers()[0]})")
             except Exception as e:
-                print(f"❌ Failed to load ONNX: {e}")
+                print(f"[ERROR] Failed to load ONNX: {e}")
                 raise
         else:
             import torch
@@ -239,7 +286,7 @@ class ShieldEngine:
                 # Current model: (1,2) probabilities.
                 return outputs[0][0]
             except Exception as e:
-                print(f"⚠️ Inference Error: {e}")
+                print(f"[WARN] Inference Error: {e}")
                 return np.array([0.5, 0.5], dtype=np.float32)
         elif self.model_type == "PyTorch":
             import torch
@@ -303,7 +350,9 @@ class ShieldEngine:
                 self.face_states[face_id] = {
                     "blink_tracker": BlinkTracker(ear_threshold=self._blink_thresh),
                     "state_machine": DecisionStateMachine(frames=self.config.get("hysteresis_frames", 5)),
-                    "last_advanced": -100
+                    "last_advanced": -100,
+                    "neural_smoother": SignalSmoother(alpha=0.3),  # Moderate smoothing
+                    "texture_smoother": SignalSmoother(alpha=0.15) # Heavy smoothing for texture
                 }
 
             # 3a. Inference
@@ -313,6 +362,9 @@ class ShieldEngine:
             
             calibrated = self.calibrator.calibrate(raw_output)
             real_prob = float(calibrated[1]) 
+            # Apply Smoothing
+            real_prob = self.face_states[face_id]["neural_smoother"].update(real_prob)
+            
             neural_verdict = "REAL" if real_prob > 0.5 else "FAKE"
             neural_confidence = real_prob
 
@@ -345,12 +397,29 @@ class ShieldEngine:
 
             # 3c. Liveness Tier
             tracker = self.face_states[face_id]["blink_tracker"]
-            blink_results = tracker.update(ear, time.monotonic(), tracker_reliability)
+            blink_results = tracker.update(ear, time.monotonic(), tracker_reliability, face.blendshapes)
             t_liveness_accum += (time.monotonic() - t_l)
 
             # 3d. Texture Tier
             t_t = time.monotonic()
             tex_score, tex_suspicious, tex_explain = compute_texture_score(face.face_crop_raw, self._device_baseline)
+            # Apply Smoothing to variance score
+            tex_score = self.face_states[face_id]["texture_smoother"].update(tex_score)
+            
+            # Re-evaluate suspicious flag based on smoothed score if close to threshold
+            # But the boolean 'tex_suspicious' was computed inside compute_texture_score based on raw.
+            # We should respect the smoothed value for stability.
+            # Re-check threshold logic locally?
+            # Default thresh is 15.0 or 0.4*baseline.
+            thresh = self._device_baseline * 0.4 if self._device_baseline else 15.0
+            if tex_score < thresh:
+                 tex_suspicious = True
+                 tex_explain += " (Smoothed < Thresh)"
+            else:
+                 # Only clear if HF ratio was also OK. compute_texture_score returns complex boolean.
+                 # For safety, we only use smoothing to PREVENT transient drops, or clean up noise.
+                 # If raw was suspicious due to HF ratio, we keep it.
+                 pass
             t_texture_accum += (time.monotonic() - t_t)
 
             # Tier Logic (Handshake)
@@ -359,7 +428,7 @@ class ShieldEngine:
             
             # Incorporate Occlusion into Liveness (Tier 2)
             occlusion_alert = face.occlusion_score > 0.25
-            liveness_pass = (blink_results["count"] > 0) or (face.is_frontal and neural_verdict == "REAL" and not occlusion_alert)
+            liveness_pass = (blink_results["count"] > 0)
             
             tier2 = "PASS" if liveness_pass else "FAIL" 
             tier3 = "PASS" if not tex_suspicious else "FAIL"
@@ -377,13 +446,14 @@ class ShieldEngine:
             # Geometry & Alert Logic
             img_h, img_w = frame.shape[:2]
             f_x, f_y, f_w, f_h = face.bbox
-            dist_cm = estimate_distance(f_w, img_w)
+            dist_cm = estimate_distance(f_w, img_w, face.transformation_matrix)
             
-            face_alert = "VERIFIED" if state == "VERIFIED" else state
-            if face.occlusion_score > 0.40: face_alert = "DETECTION BLOCKED"
+            face_alert = ""
+            if face.occlusion_score > 0.50: face_alert = "DETECTION BLOCKED"
             elif dist_cm > 150: face_alert = "TOO FAR"
             elif dist_cm < 20: face_alert = "TOO CLOSE"
-            elif not face.is_frontal: face_alert = "POSE UNSTABLE"
+            elif not face.is_frontal and state not in ("REAL", "VERIFIED"):
+                face_alert = "POSE UNSTABLE"
 
             # 3f. Compile Results
             face_results.append(FaceResult(

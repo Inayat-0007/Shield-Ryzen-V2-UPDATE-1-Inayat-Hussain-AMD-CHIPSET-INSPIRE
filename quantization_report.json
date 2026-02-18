@@ -1,15 +1,15 @@
 {
   "fp32_size_mb": 83.165317,
-  "int8_size_mb": 21.450267,
-  "compression_percent": 74.20767722198426,
+  "int8_size_mb": 21.450266,
+  "compression_percent": 74.20767842440858,
   "compression_honest_description": "FP32\u2192INT8 reduces 32-bit weights to 8-bit. Theoretical max compression is 75%. Achieved 74.2%. This is expected behavior, not exceptional.",
   "quantization_format": "QDQ",
-  "calibration_frames": 416,
+  "calibration_frames": 408,
   "per_channel_quantization": true,
   "accuracy_comparison": {
-    "mean_abs_diff": 0.03162461146712303,
-    "agreement_rate": 100.0,
-    "tested_frames": 104
+    "mean_abs_diff": 0.01858844980597496,
+    "agreement_rate": 99.01960784313727,
+    "tested_frames": 102
   },
   "npu_verification": {
     "available_providers": [

@@ -13,6 +13,8 @@ security:
   blink_time_window: 10         # Liveness check window (seconds)
   laplacian_threshold: 15       # Further lowered for realism
 
+use_audio: true
+
 preprocessing:
   input_size: 299               # Xception input resolution (299x299)
   mean: [0.5, 0.5, 0.5]        # FF++ standard normalization
@@ -26,7 +28,7 @@ landmarks:
 performance:
   advanced_throttle: 25         # AGGRESSIVE THROTTLE for 20+ FPS on CPU
   fps_window: 120               # Average FPS over this many frames
-  enable_temporal: false        # Off for max speed
+  enable_temporal: true        # Off for max speed
   enable_frequency: true
   enable_attribution: false
 
@@ -37,4 +39,5 @@ mediapipe:
   min_tracking_confidence: 0.5
   yaw_threshold: 45              # Maximum tolerance for face turns
   pitch_threshold: 30            # Maximum tolerance for up/down looks
-  landmarker_model: "face_landmarker.task"
+  pitch_threshold: 30            # Maximum tolerance for up/down looks
+  landmarker_model: "face_landmarker_v2_with_blendshapes.task"

@@ -148,8 +148,12 @@ def compute_ear(
     try:
         points = []
         for idx in eye_indices:
-            # Face pipeline returns (N, 2) pixel ndarray
-            points.append((float(landmarks[idx][0]), float(landmarks[idx][1])))
+            lm = landmarks[idx]
+            # Support both object (.x, .y) and array/tuple ([0], [1]) formats
+            if hasattr(lm, 'x') and hasattr(lm, 'y'):
+                points.append((float(lm.x), float(lm.y)))
+            else:
+                points.append((float(lm[0]), float(lm[1])))
 
         p1, p2, p3, p4, p5, p6 = points
 
@@ -170,24 +174,39 @@ def compute_ear(
         reliability = "HIGH"
         
         # If looking down significantly, eyelids naturally lower -> reliability LOW
-        if pitch > 12.0: 
+        # Note: Normal webcam usage has pitch 5-20° (looking slightly down at screen)
+        if pitch > 25.0: 
             reliability = "LOW"
         # If looking up significantly -> reliability MEDIUM
-        elif pitch < -15.0:
+        elif pitch < -20.0:
             reliability = "MEDIUM"
-        # If turning head significantly -> reliability LOW to prevent false triggers
+        # If turning head significantly
         if abs(yaw) > 25.0:
             reliability = "LOW"
+        elif abs(yaw) > 15.0 and reliability == "HIGH":
+            reliability = "MEDIUM"
             
         return round(float(ear), 4), reliability
 
     except (IndexError, TypeError, ValueError):
         return 0.05, "LOW"
 
-def estimate_distance(bbox_w: int, frame_w: int) -> float:
-    """Estimate physical distance based on face width (Diamond Tier heuristic).
+def estimate_distance(bbox_w: int, frame_w: int, matrix: Optional[np.ndarray] = None) -> float:
+    """Estimate physical distance based on transformation matrix (Diamond Tier) or width heuristic.
     Assumes average human face width is 14cm.
     """
+    if matrix is not None:
+        try:
+            # MediaPipe Matrix (4x4): Col 3 is translation [Tx, Ty, Tz, 1]
+            # Row 2 is Z.
+            # Units: MediaPipe V2 often returns cm directly.
+            z_cm = matrix[2, 3]
+            # Heuristic scaling if needed (sometimes it returns mm / 10). 
+            # We'll treat as cm for now, observing audits.
+            return round(abs(float(z_cm)), 1)
+        except Exception:
+            pass
+
     # Simple pinhole camera model: Distance = (F * RealW) / PixelW
     # Assuming focal length is roughly frame width (standard webcam)
     focal_length = frame_w
@@ -215,10 +234,49 @@ class BlinkTracker:
         # Head Movement Rejection
         self._last_pose_time = 0.0
         
-    def update(self, ear: float, timestamp: float, reliability: str) -> dict:
+    def update(self, ear: float, timestamp: float, reliability: str, blendshapes: Optional[list] = None) -> dict:
         self.history.append((timestamp, ear))
         detected = False
+        source = "EAR_DBS"
         
+        # 0. Blendshape Logic (Priority)
+        if blendshapes:
+            try:
+                # MediaPipe: 9=EyeBlinkLeft, 10=EyeBlinkRight. 0=Open, 1=Closed.
+                bs_left = blendshapes[9].score
+                bs_right = blendshapes[10].score
+                avg_blink = (bs_left + bs_right) / 2.0
+                source = "BLENDSHAPES"
+                
+                # Static threshold for high-quality blendshapes
+                is_closed = avg_blink > 0.5
+                
+                if reliability in ("HIGH", "MEDIUM"):
+                    if not self._in_blink and is_closed:
+                        self._in_blink = True
+                        self._blink_start_time = timestamp
+                    
+                    elif self._in_blink and not is_closed:
+                        self._in_blink = False
+                        duration = timestamp - self._blink_start_time
+                        if 0.03 < duration < 0.50:
+                            self.blink_count += 1
+                            self.event_times.append(timestamp)
+                            detected = True
+                            
+                return {
+                    "blink_detected": detected,
+                    "count": self.blink_count,
+                    "pattern_score": self._score_pattern(),
+                    "reliability": reliability,
+                    "baseline": 0.0,
+                    "thresh": 0.5,
+                    "source": source
+                }
+            except (IndexError, AttributeError):
+                # Fallback to EAR if indices missing/malformed
+                pass
+
         # 1. Dynamic Baseline Update
         # Find the "ceiling" of the signal (the open eye state).
         # We decay slowly to handle lighting changes, but jump up quickly if eyes open wider.
@@ -233,7 +291,7 @@ class BlinkTracker:
         thresh_open  = self.open_state_ear * 0.90  # Reopen if returns to 90% of open
         
         # 3. Validation Logic
-        if reliability == "HIGH":
+        if reliability in ("HIGH", "MEDIUM"):
             # Start of Blink
             if not self._in_blink and ear < thresh_close:
                 self._in_blink = True
@@ -261,7 +319,7 @@ class BlinkTracker:
                         self.event_times.append(timestamp)
                         detected = True
         else:
-            # If reliability drops mid-blink (e.g. head turn), abort detection to avoid false positives.
+            # If reliability is LOW (e.g. extreme head turn), abort detection to avoid false positives.
             if self._in_blink:
                 self._in_blink = False
 
@@ -271,7 +329,8 @@ class BlinkTracker:
             "pattern_score": self._score_pattern(),
             "reliability": reliability,
             "baseline": round(self.open_state_ear, 3),  # Debug info
-            "thresh": round(thresh_close, 3) # Debug info
+            "thresh": round(thresh_close, 3), # Debug info
+            "source": source
         }
 
     def _score_pattern(self) -> float:
@@ -298,7 +357,7 @@ def compute_texture_score(face_crop_raw: np.ndarray, device_baseline: Optional[f
     if forehead.size == 0: forehead = gray
 
     lap_var = float(cv2.Laplacian(forehead, cv2.CV_64F).var())
-    thresh = device_baseline * 0.4 if device_baseline else 30.0
+    thresh = device_baseline * 0.4 if device_baseline else 15.0  # Low-light tolerant
     
     # Signal processing: detect high-frequency Moire patterns/screen artifacts
     f = np.fft.fft2(forehead.astype(np.float32))
@@ -316,8 +375,11 @@ def compute_texture_score(face_crop_raw: np.ndarray, device_baseline: Optional[f
 
     # SCREEN REPLAY DETECTION: Screen pixels lack natural high-frequency variance
     # GAN DETECTION: Generative models often have 'spectral gaps'
-    suspicious = (lap_var < thresh) or (hf_ratio < 0.12)
-    explain = f"LAP: {lap_var:.1f}/{thresh:.1f} | HF: {hf_ratio:.3f}"
+    suspicious = (lap_var < thresh) or (hf_ratio < 0.08)
+    if device_baseline:
+        explain = f"LAP: {lap_var:.1f}/{thresh:.1f} | HF: {hf_ratio:.3f} | adaptive baseline={device_baseline}"
+    else:
+        explain = f"LAP: {lap_var:.1f}/{thresh:.1f} | HF: {hf_ratio:.3f}"
     return lap_var, suspicious, explain
 
 class ConfidenceCalibrator:
@@ -345,20 +407,26 @@ class DecisionStateMachine:
         case_id = (n << 2) | (l << 1) | f
         
         table = {
-            7: "VERIFIED",   # [1,1,1]
-            6: "SUSPICIOUS", # [1,1,0] - Texture/Forensic issue
-            5: "SUSPICIOUS", # [1,0,1] - Liveness/Blink issue
-            4: "HIGH_RISK",  # [1,0,0] - Only Neural passes
-            3: "FAKE",       # [0,1,1] - Neural fail
-            2: "FAKE",       # [0,1,0]
-            1: "FAKE",       # [0,0,1]
-            0: "CRITICAL"    # [0,0,0]
+            7: "REAL",        # [1,1,1] - All pass -> REAL (engine upgrades to VERIFIED if stable)
+            6: "SUSPICIOUS",  # [1,1,0] - Texture/Forensic issue
+            5: "WAIT_BLINK",  # [1,0,1] - Liveness/Blink issue (Neural OK, Texture OK, but no Blink)
+            4: "HIGH_RISK",   # [1,0,0] - Only Neural passes
+            3: "FAKE",        # [0,1,1] - Neural fail
+            2: "FAKE",        # [0,1,0]
+            1: "FAKE",        # [0,0,1]
+            0: "CRITICAL"     # [0,0,0]
         }
         proposed = table.get(case_id, "UNKNOWN")
         
-        # Agile Hysteresis: Faster transition to FAKE/CRITICAL for security, 
-        # but slower transition to VERIFIED to ensure stability.
-        threshold = 2 if proposed in ["FAKE", "CRITICAL", "HIGH_RISK"] else self.hysteresis
+        # First transition from UNKNOWN: apply immediately (no prior state to protect)
+        if self.state == "UNKNOWN":
+            self.state = proposed
+            self.counter = 0
+            return self.state
+        
+        # Agile Hysteresis: Immediate transition to FAKE/CRITICAL for security, 
+        # but slower transition to REAL to ensure stability.
+        threshold = 1 if proposed in ["FAKE", "CRITICAL", "HIGH_RISK"] else self.hysteresis
         
         if proposed == self.state:
             self.counter = 0
@@ -376,3 +444,117 @@ def classify_face(fake_prob: float, real_prob: float, liveness_ok: bool, texture
     if not texture_ok: return "FORENSIC WARNING", (0, 200, 255), "TEXTURE"
     if real_prob < 0.9: return "LOW CONFIDENCE", (0, 200, 255), "WARN"
     return "SHIELD: VERIFIED", (0, 255, 0), "VERIFIED"
+
+
+# ===================================================================
+# Backward-Compatible Aliases
+# ===================================================================
+
+def calculate_ear(landmarks, eye_indices, head_pose=(0.0, 0.0, 0.0), is_frontal=True):
+    """Backward-compatible alias for compute_ear."""
+    return compute_ear(landmarks, eye_indices, head_pose, is_frontal)
+
+
+def analyze_blink_pattern(event_times: list, window: float = 60.0, window_seconds: float = None) -> tuple:
+    """Analyze blink pattern naturalness from event timestamps.
+    Returns (score, description) where score is 0.0 (robotic) to 1.0 (natural).
+    """
+    if window_seconds is not None:
+        window = window_seconds
+    if not event_times:
+        return 0.2, "no_blinks"
+    now = time.monotonic()
+    recent = [t for t in event_times if now - t < window]
+    if not recent:
+        return 0.2, "no_recent_blinks"
+    if len(recent) < 3:
+        return 0.5, "insufficient_blinks"
+    intervals = [recent[i+1] - recent[i] for i in range(len(recent)-1)]
+    cv_val = float(np.std(intervals) / (np.mean(intervals) + 1e-6))
+    score = 1.0 if cv_val > 0.3 else (cv_val / 0.3)
+    score = round(float(score), 2)
+    desc = "natural" if cv_val > 0.3 else "periodic"
+    return score, desc
+
+
+def check_texture(face_crop_raw: np.ndarray, device_baseline: Optional[float] = None) -> tuple:
+    """Backward-compatible alias for compute_texture_score."""
+    return compute_texture_score(face_crop_raw, device_baseline)
+
+
+def _compute_hf_energy_ratio(gray_roi: np.ndarray) -> float:
+    """Compute high-frequency energy ratio via FFT for forensic analysis."""
+    f = np.fft.fft2(gray_roi.astype(np.float32))
+    fshift = np.fft.fftshift(f)
+    mag = 20 * np.log(np.abs(fshift) + 1e-10)
+    cy, cx = gray_roi.shape[0] // 2, gray_roi.shape[1] // 2
+    r_hf = int(min(gray_roi.shape) * 0.25)
+    y, x = np.ogrid[:gray_roi.shape[0], :gray_roi.shape[1]]
+    mask_lf = (y - cy)**2 + (x - cx)**2 <= r_hf**2
+    hf_energy = mag[~mask_lf].mean() if not np.all(mask_lf) else 0
+    lf_energy = mag[mask_lf].mean() + 1e-10
+    return hf_energy / lf_energy
+
+
+def calibrate_device_baseline(
+    face_crop_raw: np.ndarray = None,
+    camera=None,
+    num_frames: int = 50,
+    output_path: str = None,
+) -> dict:
+    """Compute a device-specific baseline for texture thresholds.
+
+    When camera=None (synthetic mode), generates synthetic frames.
+    Returns a dict with calibration metrics, and optionally saves to JSON.
+    """
+    import datetime
+
+    lap_values = []
+    ear_values = []
+
+    if face_crop_raw is not None:
+        # Single-frame mode (backward compat)
+        gray = cv2.cvtColor(face_crop_raw, cv2.COLOR_BGR2GRAY)
+        lap_val = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+        lap_values.append(lap_val)
+        num_frames = 1
+    elif camera is not None:
+        # Camera mode: capture frames
+        for _ in range(num_frames):
+            ret, frame = camera.read()
+            if ret and frame is not None:
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                lap_values.append(float(cv2.Laplacian(gray, cv2.CV_64F).var()))
+                ear_values.append(0.28)  # Placeholder
+    else:
+        # Synthetic mode: generate random frames
+        rng = np.random.RandomState(42)
+        for _ in range(num_frames):
+            synth = rng.randint(50, 200, (100, 100, 3), dtype=np.uint8)
+            gray = cv2.cvtColor(synth, cv2.COLOR_BGR2GRAY)
+            lap_values.append(float(cv2.Laplacian(gray, cv2.CV_64F).var()))
+            ear_values.append(0.28 + rng.uniform(-0.02, 0.02))
+
+    if not lap_values:
+        lap_values = [30.0]
+
+    lap_mean = float(np.mean(lap_values))
+    lap_std = float(np.std(lap_values))
+    ear_mean = float(np.mean(ear_values)) if ear_values else 0.28
+
+    result = {
+        "laplacian_mean": lap_mean,
+        "laplacian_std": lap_std,
+        "recommended_threshold": round(lap_mean * 0.4, 2),
+        "ear_baseline_mean": round(ear_mean, 4),
+        "camera_resolution": "synthetic" if camera is None else "live",
+        "calibration_timestamp": datetime.datetime.now().isoformat(),
+        "num_frames_captured": num_frames,
+    }
+
+    if output_path:
+        os.makedirs(os.path.dirname(output_path) if os.path.dirname(output_path) else '.', exist_ok=True)
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, indent=2)
+
+    return result

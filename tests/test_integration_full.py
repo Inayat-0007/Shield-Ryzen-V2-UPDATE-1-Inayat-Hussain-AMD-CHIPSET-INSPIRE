@@ -45,6 +45,9 @@ class TestFullIntegration(unittest.TestCase):
         face.face_crop_299 = np.zeros((1, 3, 299, 299), dtype=np.float32)
         face.face_crop_raw = np.zeros((200, 200, 3), dtype=np.uint8)
         face.landmarks = np.zeros((478, 2))
+        face.head_pose = (0.0, 0.0, 0.0)
+        face.is_frontal = True
+        face.occlusion_score = 0.0
         MockPipeline.return_value.detect_faces.return_value = [face]
 
         with patch("onnxruntime.InferenceSession") as MockSession, \
@@ -127,8 +130,8 @@ class TestFullIntegration(unittest.TestCase):
         mock_cam.read_validated_frame.return_value = (True, np.zeros((480, 640, 3), dtype=np.uint8), 1.0)
         mock_cam.get_health_status.return_value = {"fps_actual": 30.0, "drop_rate_pct": 0.0}
         
-        f1 = MagicMock(spec=FaceDetection); f1.bbox = (0,0,10,10); f1.face_crop_299 = np.zeros((1,3,299,299)); f1.face_crop_raw = np.zeros((10,10,3)); f1.landmarks = np.zeros((478,2))
-        f2 = MagicMock(spec=FaceDetection); f2.bbox = (20,20,10,10); f2.face_crop_299 = np.zeros((1,3,299,299)); f2.face_crop_raw = np.zeros((10,10,3)); f2.landmarks = np.zeros((478,2))
+        f1 = MagicMock(spec=FaceDetection); f1.bbox = (0,0,10,10); f1.face_crop_299 = np.zeros((1,3,299,299)); f1.face_crop_raw = np.zeros((10,10,3)); f1.landmarks = np.zeros((478,2)); f1.head_pose = (0.0, 0.0, 0.0); f1.is_frontal = True; f1.occlusion_score = 0.0
+        f2 = MagicMock(spec=FaceDetection); f2.bbox = (20,20,10,10); f2.face_crop_299 = np.zeros((1,3,299,299)); f2.face_crop_raw = np.zeros((10,10,3)); f2.landmarks = np.zeros((478,2)); f2.head_pose = (0.0, 0.0, 0.0); f2.is_frontal = True; f2.occlusion_score = 0.0
         
         MockPipeline.return_value.detect_faces.return_value = [f1, f2]
         

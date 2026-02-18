@@ -61,15 +61,18 @@ class FrequencyAnalyzer:
         # 5. Moire / Screen Detection (Periodic Spikes)
         # Real skin has smooth radial profile. Screens have spikes.
         delta = np.abs(np.diff(radial_profile))
-        max_spike = np.max(delta) if len(delta) > 0 else 0.0
-        moire_detected = max_spike > 25.0 # Shield against intense digital display grids
+        # Skip first few bins (DC region) — the DC-to-first-harmonic transition
+        # always creates a large spike that would falsely trigger moire detection
+        delta_no_dc = delta[3:] if len(delta) > 3 else delta
+        max_spike = np.max(delta_no_dc) if len(delta_no_dc) > 0 else 0.0
+        moire_detected = max_spike > 30.0 # Shield against intense digital display grids
         
         # High-freq energy variance (Real skin is chaotic, screens are ordered)
         spectral_variance = np.var(radial_profile[int(limit * 0.5):])
-        order_anomaly = spectral_variance > 80.0 # High order suggests monitor re-scan patterns
+        order_anomaly = spectral_variance > 200.0 # High order suggests monitor re-scan patterns
 
         # Detect Anomalies
-        spectral_anomaly = (hf_ratio < 0.005) or moire_detected or order_anomaly
+        spectral_anomaly = (hf_ratio < 0.003) or moire_detected or order_anomaly
         
         # Frequency Score (0=Fake/GAN/Screen, 1=Real)
         score = min(1.0, hf_ratio * 10.0) 

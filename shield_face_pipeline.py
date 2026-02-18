@@ -71,6 +71,8 @@ class FaceDetection:
     occlusion_score: float = 0.0
     is_frontal: bool = True
     ear_reliable: bool = True
+    blendshapes: Optional[list] = None               # List of category scores
+    transformation_matrix: Optional[np.ndarray] = None # (4, 4) transformation matrix
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -184,12 +186,21 @@ class ShieldFacePipeline:
         min_confidence: float,
     ) -> None:
         """Initialize MediaPipe FaceLandmarker backend."""
-        import mediapipe as mp
+        # Use Tasks API import
+        from mediapipe.tasks import python
+        from mediapipe.tasks.python import vision
 
         full_path = os.path.join(_SCRIPT_DIR, model_path)
+        # Fallback for v2 model name if v1 requested but v2 present
+        if not os.path.exists(full_path) and "face_landmarker.task" in model_path:
+             v2_path = os.path.join(_SCRIPT_DIR, "face_landmarker_v2_with_blendshapes.task")
+             if os.path.exists(v2_path):
+                 full_path = v2_path
+
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"MediaPipe model not found: {full_path}")
 
+        
         model_size_mb = os.path.getsize(full_path) / 1024 / 1024
         _log.info(
             "MediaPipe FaceLandmarker: %.1f MB, expected accuracy: ~95%% "
@@ -197,21 +208,29 @@ class ShieldFacePipeline:
             model_size_mb,
         )
 
-        BaseOptions = mp.tasks.BaseOptions
-        FaceLandmarker = mp.tasks.vision.FaceLandmarker
-        FaceLandmarkerOptions = mp.tasks.vision.FaceLandmarkerOptions
-        VisionRunningMode = mp.tasks.vision.RunningMode
+        base_options = python.BaseOptions(
+            model_asset_path=full_path,
+            delegate=python.BaseOptions.Delegate.CPU
+        )
+        
+        # Define callback for LIVE_STREAM mode
+        def _on_result(result, image, timestamp_ms):
+            self._latest_result = result
 
-        options = FaceLandmarkerOptions(
-            base_options=BaseOptions(model_asset_path=full_path),
-            running_mode=VisionRunningMode.VIDEO,
+        # Use VIDEO mode for synchronous processing
+        options = vision.FaceLandmarkerOptions(
+            base_options=base_options,
+            running_mode=vision.RunningMode.VIDEO,
             num_faces=max_faces,
             min_face_detection_confidence=min_confidence,
             min_face_presence_confidence=min_confidence,
             min_tracking_confidence=0.5,
+            output_face_blendshapes=True,
+            output_facial_transformation_matrixes=True,
         )
-        self._landmarker = FaceLandmarker.create_from_options(options)
-        self._mp = mp  # Keep reference for Image creation
+        
+        self._landmarker = vision.FaceLandmarker.create_from_options(options)
+        self._mp = python.vision
 
     def _init_dnn_ssd(self) -> None:
         """Initialize OpenCV DNN SSD face detector.
@@ -438,11 +457,12 @@ class ShieldFacePipeline:
             # Eye distance should be ~30-50% of face width
             eye_ratio = eye_dist / max(w, 1)
             if eye_ratio < 0.15 or eye_ratio > 0.8:
-                checks.append(0.5)  # Suspicious eye distance
+                checks.append(0.3)  # Suspicious eye distance (supplementary signal)
             else:
                 checks.append(0.0)
 
-        occlusion = max(checks) if checks else 0.0
+        # Weighted average: visibility checks dominate, inter-eye is supplementary
+        occlusion = float(np.mean(checks)) if checks else 0.0
         return round(occlusion, 3)
 
     def release(self) -> None:
@@ -470,10 +490,11 @@ class ShieldFacePipeline:
 
         h, w = frame.shape[:2]
 
+        import mediapipe as mp
         # MediaPipe expects RGB input
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        mp_image = self._mp.Image(
-            image_format=self._mp.ImageFormat.SRGB,
+        mp_image = mp.Image(
+            image_format=mp.ImageFormat.SRGB,
             data=rgb_frame,
         )
 
@@ -487,12 +508,12 @@ class ShieldFacePipeline:
             _log.debug("MediaPipe detection failed: %s", e)
             return []
 
-        if not result.face_landmarks:
+        if not result or not result.face_landmarks:
             return []
 
         detections: list[FaceDetection] = []
 
-        for face_lms in result.face_landmarks:
+        for i, face_lms in enumerate(result.face_landmarks):
             # Convert normalized landmarks to pixel coordinates
             lm_array = np.array([
                 [lm.x * w, lm.y * h] for lm in face_lms
@@ -549,6 +570,8 @@ class ShieldFacePipeline:
                 occlusion_score=occlusion,
                 is_frontal=is_frontal,
                 ear_reliable=ear_reliable,
+                blendshapes=result.face_blendshapes[i] if result.face_blendshapes else None,
+                transformation_matrix=result.facial_transformation_matrixes[i] if result.facial_transformation_matrixes else None,
             )
             detections.append(detection)
 
@@ -603,6 +626,8 @@ class ShieldFacePipeline:
                 occlusion_score=0.0,
                 is_frontal=True,  # Can't determine without landmarks
                 ear_reliable=True,
+                blendshapes=None,
+                transformation_matrix=None,
             )
             detections.append(detection)
 

@@ -135,7 +135,7 @@ def load_model_with_verification(model_path, device):
     return new_state_dict
 
 # Initialize Calibrator (Part 3)
-calibrator = ConfidenceCalibrator.load()
+calibrator = ConfidenceCalibrator()
 
 try:
     # 1. Verify and Load Weights
@@ -148,7 +148,7 @@ try:
     total_keys = len(clean_state_dict)
     matched_keys = total_keys - len(result.unexpected_keys)
     print(f"✅ Brain Loaded — {matched_keys}/{total_keys} weights matched.")
-    print(f"✅ Calibration — Temperature T={calibrator.temperature:.2f}")
+    print(f"✅ Calibration — Temperature T={calibrator.temp:.2f}")
 
 except Exception as e:
     print(f"❌ SECURITY/LOAD ERROR: {e}")
