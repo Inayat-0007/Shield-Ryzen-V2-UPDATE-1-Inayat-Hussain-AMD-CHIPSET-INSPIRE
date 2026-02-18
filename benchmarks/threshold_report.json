@@ -1,0 +1,10 @@
+{
+  "optimal_thresholds": {
+    "optimal_f1": 0.5781883594135331,
+    "f1_score": 0.9630753617179251,
+    "threshold_far_0.1%": 0.7693887726119388,
+    "threshold_far_1.0%": 0.7004286018841507
+  },
+  "current_arbitrary_threshold": 0.89,
+  "recommendation": "Switch to 0.58 for balanced F1, or 0.77 for high security."
+}

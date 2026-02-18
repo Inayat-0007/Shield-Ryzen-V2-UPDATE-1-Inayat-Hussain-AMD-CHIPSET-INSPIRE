@@ -179,13 +179,15 @@ print(f"\n[10] Latency Benchmark (100 runs)...")
 
 # PyTorch latency
 bench_input_pt = torch.randn(1, 3, 299, 299).to(device)
-torch.cuda.synchronize()
+if torch.cuda.is_available():
+    torch.cuda.synchronize()
 pt_times = []
 for _ in range(100):
     start = time.perf_counter()
     with torch.no_grad():
         _ = model(bench_input_pt)
-    torch.cuda.synchronize()
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
     pt_times.append((time.perf_counter() - start) * 1000)
 
 # ONNX latency

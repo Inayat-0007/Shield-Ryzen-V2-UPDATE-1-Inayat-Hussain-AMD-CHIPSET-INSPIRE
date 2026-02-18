@@ -1,0 +1,1115 @@
+{
+  "checkpoint_path": "ffpp_c23.pth",
+  "file_size_bytes": 83519096,
+  "checkpoint_hash_sha256": "8bcb10c1567d66bca32776b4c4b8f9e037be37722270e0c65643f7a2c781d762",
+  "total_checkpoint_keys": 276,
+  "total_model_keys": 276,
+  "matched_keys": [
+    {
+      "checkpoint": "model.conv1.weight",
+      "model": "conv1.weight"
+    },
+    {
+      "checkpoint": "model.bn1.weight",
+      "model": "bn1.weight"
+    },
+    {
+      "checkpoint": "model.bn1.bias",
+      "model": "bn1.bias"
+    },
+    {
+      "checkpoint": "model.bn1.running_mean",
+      "model": "bn1.running_mean"
+    },
+    {
+      "checkpoint": "model.bn1.running_var",
+      "model": "bn1.running_var"
+    },
+    {
+      "checkpoint": "model.bn1.num_batches_tracked",
+      "model": "bn1.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.conv2.weight",
+      "model": "conv2.weight"
+    },
+    {
+      "checkpoint": "model.bn2.weight",
+      "model": "bn2.weight"
+    },
+    {
+      "checkpoint": "model.bn2.bias",
+      "model": "bn2.bias"
+    },
+    {
+      "checkpoint": "model.bn2.running_mean",
+      "model": "bn2.running_mean"
+    },
+    {
+      "checkpoint": "model.bn2.running_var",
+      "model": "bn2.running_var"
+    },
+    {
+      "checkpoint": "model.bn2.num_batches_tracked",
+      "model": "bn2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block1.skip.weight",
+      "model": "block1.skip.weight"
+    },
+    {
+      "checkpoint": "model.block1.skipbn.weight",
+      "model": "block1.skipbn.weight"
+    },
+    {
+      "checkpoint": "model.block1.skipbn.bias",
+      "model": "block1.skipbn.bias"
+    },
+    {
+      "checkpoint": "model.block1.skipbn.running_mean",
+      "model": "block1.skipbn.running_mean"
+    },
+    {
+      "checkpoint": "model.block1.skipbn.running_var",
+      "model": "block1.skipbn.running_var"
+    },
+    {
+      "checkpoint": "model.block1.skipbn.num_batches_tracked",
+      "model": "block1.skipbn.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block1.rep.0.conv1.weight",
+      "model": "block1.rep.0.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block1.rep.0.pointwise.weight",
+      "model": "block1.rep.0.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block1.rep.1.weight",
+      "model": "block1.rep.1.weight"
+    },
+    {
+      "checkpoint": "model.block1.rep.1.bias",
+      "model": "block1.rep.1.bias"
+    },
+    {
+      "checkpoint": "model.block1.rep.1.running_mean",
+      "model": "block1.rep.1.running_mean"
+    },
+    {
+      "checkpoint": "model.block1.rep.1.running_var",
+      "model": "block1.rep.1.running_var"
+    },
+    {
+      "checkpoint": "model.block1.rep.1.num_batches_tracked",
+      "model": "block1.rep.1.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block1.rep.3.conv1.weight",
+      "model": "block1.rep.3.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block1.rep.3.pointwise.weight",
+      "model": "block1.rep.3.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block1.rep.4.weight",
+      "model": "block1.rep.4.weight"
+    },
+    {
+      "checkpoint": "model.block1.rep.4.bias",
+      "model": "block1.rep.4.bias"
+    },
+    {
+      "checkpoint": "model.block1.rep.4.running_mean",
+      "model": "block1.rep.4.running_mean"
+    },
+    {
+      "checkpoint": "model.block1.rep.4.running_var",
+      "model": "block1.rep.4.running_var"
+    },
+    {
+      "checkpoint": "model.block1.rep.4.num_batches_tracked",
+      "model": "block1.rep.4.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block2.skip.weight",
+      "model": "block2.skip.weight"
+    },
+    {
+      "checkpoint": "model.block2.skipbn.weight",
+      "model": "block2.skipbn.weight"
+    },
+    {
+      "checkpoint": "model.block2.skipbn.bias",
+      "model": "block2.skipbn.bias"
+    },
+    {
+      "checkpoint": "model.block2.skipbn.running_mean",
+      "model": "block2.skipbn.running_mean"
+    },
+    {
+      "checkpoint": "model.block2.skipbn.running_var",
+      "model": "block2.skipbn.running_var"
+    },
+    {
+      "checkpoint": "model.block2.skipbn.num_batches_tracked",
+      "model": "block2.skipbn.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block2.rep.1.conv1.weight",
+      "model": "block2.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block2.rep.1.pointwise.weight",
+      "model": "block2.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block2.rep.2.weight",
+      "model": "block2.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block2.rep.2.bias",
+      "model": "block2.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block2.rep.2.running_mean",
+      "model": "block2.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block2.rep.2.running_var",
+      "model": "block2.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block2.rep.2.num_batches_tracked",
+      "model": "block2.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block2.rep.4.conv1.weight",
+      "model": "block2.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block2.rep.4.pointwise.weight",
+      "model": "block2.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block2.rep.5.weight",
+      "model": "block2.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block2.rep.5.bias",
+      "model": "block2.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block2.rep.5.running_mean",
+      "model": "block2.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block2.rep.5.running_var",
+      "model": "block2.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block2.rep.5.num_batches_tracked",
+      "model": "block2.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block3.skip.weight",
+      "model": "block3.skip.weight"
+    },
+    {
+      "checkpoint": "model.block3.skipbn.weight",
+      "model": "block3.skipbn.weight"
+    },
+    {
+      "checkpoint": "model.block3.skipbn.bias",
+      "model": "block3.skipbn.bias"
+    },
+    {
+      "checkpoint": "model.block3.skipbn.running_mean",
+      "model": "block3.skipbn.running_mean"
+    },
+    {
+      "checkpoint": "model.block3.skipbn.running_var",
+      "model": "block3.skipbn.running_var"
+    },
+    {
+      "checkpoint": "model.block3.skipbn.num_batches_tracked",
+      "model": "block3.skipbn.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block3.rep.1.conv1.weight",
+      "model": "block3.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block3.rep.1.pointwise.weight",
+      "model": "block3.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block3.rep.2.weight",
+      "model": "block3.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block3.rep.2.bias",
+      "model": "block3.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block3.rep.2.running_mean",
+      "model": "block3.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block3.rep.2.running_var",
+      "model": "block3.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block3.rep.2.num_batches_tracked",
+      "model": "block3.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block3.rep.4.conv1.weight",
+      "model": "block3.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block3.rep.4.pointwise.weight",
+      "model": "block3.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block3.rep.5.weight",
+      "model": "block3.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block3.rep.5.bias",
+      "model": "block3.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block3.rep.5.running_mean",
+      "model": "block3.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block3.rep.5.running_var",
+      "model": "block3.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block3.rep.5.num_batches_tracked",
+      "model": "block3.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block4.rep.1.conv1.weight",
+      "model": "block4.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.1.pointwise.weight",
+      "model": "block4.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.2.weight",
+      "model": "block4.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.2.bias",
+      "model": "block4.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block4.rep.2.running_mean",
+      "model": "block4.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block4.rep.2.running_var",
+      "model": "block4.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block4.rep.2.num_batches_tracked",
+      "model": "block4.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block4.rep.4.conv1.weight",
+      "model": "block4.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.4.pointwise.weight",
+      "model": "block4.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.5.weight",
+      "model": "block4.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.5.bias",
+      "model": "block4.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block4.rep.5.running_mean",
+      "model": "block4.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block4.rep.5.running_var",
+      "model": "block4.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block4.rep.5.num_batches_tracked",
+      "model": "block4.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block4.rep.7.conv1.weight",
+      "model": "block4.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.7.pointwise.weight",
+      "model": "block4.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.8.weight",
+      "model": "block4.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block4.rep.8.bias",
+      "model": "block4.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block4.rep.8.running_mean",
+      "model": "block4.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block4.rep.8.running_var",
+      "model": "block4.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block4.rep.8.num_batches_tracked",
+      "model": "block4.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block5.rep.1.conv1.weight",
+      "model": "block5.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.1.pointwise.weight",
+      "model": "block5.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.2.weight",
+      "model": "block5.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.2.bias",
+      "model": "block5.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block5.rep.2.running_mean",
+      "model": "block5.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block5.rep.2.running_var",
+      "model": "block5.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block5.rep.2.num_batches_tracked",
+      "model": "block5.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block5.rep.4.conv1.weight",
+      "model": "block5.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.4.pointwise.weight",
+      "model": "block5.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.5.weight",
+      "model": "block5.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.5.bias",
+      "model": "block5.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block5.rep.5.running_mean",
+      "model": "block5.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block5.rep.5.running_var",
+      "model": "block5.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block5.rep.5.num_batches_tracked",
+      "model": "block5.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block5.rep.7.conv1.weight",
+      "model": "block5.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.7.pointwise.weight",
+      "model": "block5.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.8.weight",
+      "model": "block5.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block5.rep.8.bias",
+      "model": "block5.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block5.rep.8.running_mean",
+      "model": "block5.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block5.rep.8.running_var",
+      "model": "block5.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block5.rep.8.num_batches_tracked",
+      "model": "block5.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block6.rep.1.conv1.weight",
+      "model": "block6.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.1.pointwise.weight",
+      "model": "block6.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.2.weight",
+      "model": "block6.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.2.bias",
+      "model": "block6.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block6.rep.2.running_mean",
+      "model": "block6.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block6.rep.2.running_var",
+      "model": "block6.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block6.rep.2.num_batches_tracked",
+      "model": "block6.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block6.rep.4.conv1.weight",
+      "model": "block6.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.4.pointwise.weight",
+      "model": "block6.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.5.weight",
+      "model": "block6.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.5.bias",
+      "model": "block6.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block6.rep.5.running_mean",
+      "model": "block6.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block6.rep.5.running_var",
+      "model": "block6.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block6.rep.5.num_batches_tracked",
+      "model": "block6.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block6.rep.7.conv1.weight",
+      "model": "block6.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.7.pointwise.weight",
+      "model": "block6.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.8.weight",
+      "model": "block6.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block6.rep.8.bias",
+      "model": "block6.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block6.rep.8.running_mean",
+      "model": "block6.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block6.rep.8.running_var",
+      "model": "block6.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block6.rep.8.num_batches_tracked",
+      "model": "block6.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block7.rep.1.conv1.weight",
+      "model": "block7.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.1.pointwise.weight",
+      "model": "block7.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.2.weight",
+      "model": "block7.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.2.bias",
+      "model": "block7.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block7.rep.2.running_mean",
+      "model": "block7.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block7.rep.2.running_var",
+      "model": "block7.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block7.rep.2.num_batches_tracked",
+      "model": "block7.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block7.rep.4.conv1.weight",
+      "model": "block7.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.4.pointwise.weight",
+      "model": "block7.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.5.weight",
+      "model": "block7.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.5.bias",
+      "model": "block7.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block7.rep.5.running_mean",
+      "model": "block7.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block7.rep.5.running_var",
+      "model": "block7.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block7.rep.5.num_batches_tracked",
+      "model": "block7.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block7.rep.7.conv1.weight",
+      "model": "block7.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.7.pointwise.weight",
+      "model": "block7.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.8.weight",
+      "model": "block7.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block7.rep.8.bias",
+      "model": "block7.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block7.rep.8.running_mean",
+      "model": "block7.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block7.rep.8.running_var",
+      "model": "block7.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block7.rep.8.num_batches_tracked",
+      "model": "block7.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block8.rep.1.conv1.weight",
+      "model": "block8.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.1.pointwise.weight",
+      "model": "block8.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.2.weight",
+      "model": "block8.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.2.bias",
+      "model": "block8.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block8.rep.2.running_mean",
+      "model": "block8.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block8.rep.2.running_var",
+      "model": "block8.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block8.rep.2.num_batches_tracked",
+      "model": "block8.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block8.rep.4.conv1.weight",
+      "model": "block8.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.4.pointwise.weight",
+      "model": "block8.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.5.weight",
+      "model": "block8.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.5.bias",
+      "model": "block8.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block8.rep.5.running_mean",
+      "model": "block8.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block8.rep.5.running_var",
+      "model": "block8.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block8.rep.5.num_batches_tracked",
+      "model": "block8.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block8.rep.7.conv1.weight",
+      "model": "block8.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.7.pointwise.weight",
+      "model": "block8.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.8.weight",
+      "model": "block8.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block8.rep.8.bias",
+      "model": "block8.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block8.rep.8.running_mean",
+      "model": "block8.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block8.rep.8.running_var",
+      "model": "block8.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block8.rep.8.num_batches_tracked",
+      "model": "block8.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block9.rep.1.conv1.weight",
+      "model": "block9.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.1.pointwise.weight",
+      "model": "block9.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.2.weight",
+      "model": "block9.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.2.bias",
+      "model": "block9.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block9.rep.2.running_mean",
+      "model": "block9.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block9.rep.2.running_var",
+      "model": "block9.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block9.rep.2.num_batches_tracked",
+      "model": "block9.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block9.rep.4.conv1.weight",
+      "model": "block9.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.4.pointwise.weight",
+      "model": "block9.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.5.weight",
+      "model": "block9.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.5.bias",
+      "model": "block9.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block9.rep.5.running_mean",
+      "model": "block9.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block9.rep.5.running_var",
+      "model": "block9.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block9.rep.5.num_batches_tracked",
+      "model": "block9.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block9.rep.7.conv1.weight",
+      "model": "block9.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.7.pointwise.weight",
+      "model": "block9.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.8.weight",
+      "model": "block9.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block9.rep.8.bias",
+      "model": "block9.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block9.rep.8.running_mean",
+      "model": "block9.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block9.rep.8.running_var",
+      "model": "block9.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block9.rep.8.num_batches_tracked",
+      "model": "block9.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block10.rep.1.conv1.weight",
+      "model": "block10.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.1.pointwise.weight",
+      "model": "block10.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.2.weight",
+      "model": "block10.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.2.bias",
+      "model": "block10.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block10.rep.2.running_mean",
+      "model": "block10.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block10.rep.2.running_var",
+      "model": "block10.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block10.rep.2.num_batches_tracked",
+      "model": "block10.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block10.rep.4.conv1.weight",
+      "model": "block10.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.4.pointwise.weight",
+      "model": "block10.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.5.weight",
+      "model": "block10.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.5.bias",
+      "model": "block10.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block10.rep.5.running_mean",
+      "model": "block10.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block10.rep.5.running_var",
+      "model": "block10.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block10.rep.5.num_batches_tracked",
+      "model": "block10.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block10.rep.7.conv1.weight",
+      "model": "block10.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.7.pointwise.weight",
+      "model": "block10.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.8.weight",
+      "model": "block10.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block10.rep.8.bias",
+      "model": "block10.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block10.rep.8.running_mean",
+      "model": "block10.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block10.rep.8.running_var",
+      "model": "block10.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block10.rep.8.num_batches_tracked",
+      "model": "block10.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block11.rep.1.conv1.weight",
+      "model": "block11.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.1.pointwise.weight",
+      "model": "block11.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.2.weight",
+      "model": "block11.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.2.bias",
+      "model": "block11.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block11.rep.2.running_mean",
+      "model": "block11.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block11.rep.2.running_var",
+      "model": "block11.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block11.rep.2.num_batches_tracked",
+      "model": "block11.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block11.rep.4.conv1.weight",
+      "model": "block11.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.4.pointwise.weight",
+      "model": "block11.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.5.weight",
+      "model": "block11.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.5.bias",
+      "model": "block11.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block11.rep.5.running_mean",
+      "model": "block11.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block11.rep.5.running_var",
+      "model": "block11.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block11.rep.5.num_batches_tracked",
+      "model": "block11.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block11.rep.7.conv1.weight",
+      "model": "block11.rep.7.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.7.pointwise.weight",
+      "model": "block11.rep.7.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.8.weight",
+      "model": "block11.rep.8.weight"
+    },
+    {
+      "checkpoint": "model.block11.rep.8.bias",
+      "model": "block11.rep.8.bias"
+    },
+    {
+      "checkpoint": "model.block11.rep.8.running_mean",
+      "model": "block11.rep.8.running_mean"
+    },
+    {
+      "checkpoint": "model.block11.rep.8.running_var",
+      "model": "block11.rep.8.running_var"
+    },
+    {
+      "checkpoint": "model.block11.rep.8.num_batches_tracked",
+      "model": "block11.rep.8.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block12.skip.weight",
+      "model": "block12.skip.weight"
+    },
+    {
+      "checkpoint": "model.block12.skipbn.weight",
+      "model": "block12.skipbn.weight"
+    },
+    {
+      "checkpoint": "model.block12.skipbn.bias",
+      "model": "block12.skipbn.bias"
+    },
+    {
+      "checkpoint": "model.block12.skipbn.running_mean",
+      "model": "block12.skipbn.running_mean"
+    },
+    {
+      "checkpoint": "model.block12.skipbn.running_var",
+      "model": "block12.skipbn.running_var"
+    },
+    {
+      "checkpoint": "model.block12.skipbn.num_batches_tracked",
+      "model": "block12.skipbn.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block12.rep.1.conv1.weight",
+      "model": "block12.rep.1.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block12.rep.1.pointwise.weight",
+      "model": "block12.rep.1.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block12.rep.2.weight",
+      "model": "block12.rep.2.weight"
+    },
+    {
+      "checkpoint": "model.block12.rep.2.bias",
+      "model": "block12.rep.2.bias"
+    },
+    {
+      "checkpoint": "model.block12.rep.2.running_mean",
+      "model": "block12.rep.2.running_mean"
+    },
+    {
+      "checkpoint": "model.block12.rep.2.running_var",
+      "model": "block12.rep.2.running_var"
+    },
+    {
+      "checkpoint": "model.block12.rep.2.num_batches_tracked",
+      "model": "block12.rep.2.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.block12.rep.4.conv1.weight",
+      "model": "block12.rep.4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.block12.rep.4.pointwise.weight",
+      "model": "block12.rep.4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.block12.rep.5.weight",
+      "model": "block12.rep.5.weight"
+    },
+    {
+      "checkpoint": "model.block12.rep.5.bias",
+      "model": "block12.rep.5.bias"
+    },
+    {
+      "checkpoint": "model.block12.rep.5.running_mean",
+      "model": "block12.rep.5.running_mean"
+    },
+    {
+      "checkpoint": "model.block12.rep.5.running_var",
+      "model": "block12.rep.5.running_var"
+    },
+    {
+      "checkpoint": "model.block12.rep.5.num_batches_tracked",
+      "model": "block12.rep.5.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.conv3.conv1.weight",
+      "model": "conv3.conv1.weight"
+    },
+    {
+      "checkpoint": "model.conv3.pointwise.weight",
+      "model": "conv3.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.bn3.weight",
+      "model": "bn3.weight"
+    },
+    {
+      "checkpoint": "model.bn3.bias",
+      "model": "bn3.bias"
+    },
+    {
+      "checkpoint": "model.bn3.running_mean",
+      "model": "bn3.running_mean"
+    },
+    {
+      "checkpoint": "model.bn3.running_var",
+      "model": "bn3.running_var"
+    },
+    {
+      "checkpoint": "model.bn3.num_batches_tracked",
+      "model": "bn3.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.conv4.conv1.weight",
+      "model": "conv4.conv1.weight"
+    },
+    {
+      "checkpoint": "model.conv4.pointwise.weight",
+      "model": "conv4.pointwise.weight"
+    },
+    {
+      "checkpoint": "model.bn4.weight",
+      "model": "bn4.weight"
+    },
+    {
+      "checkpoint": "model.bn4.bias",
+      "model": "bn4.bias"
+    },
+    {
+      "checkpoint": "model.bn4.running_mean",
+      "model": "bn4.running_mean"
+    },
+    {
+      "checkpoint": "model.bn4.running_var",
+      "model": "bn4.running_var"
+    },
+    {
+      "checkpoint": "model.bn4.num_batches_tracked",
+      "model": "bn4.num_batches_tracked"
+    }
+  ],
+  "unmatched_checkpoint_keys": [
+    "model.last_linear.1.weight",
+    "model.last_linear.1.bias"
+  ],
+  "missing_model_keys": [
+    "fc.weight",
+    "fc.bias"
+  ],
+  "verification_timestamp": "",
+  "mapping_success_rate": 99.28
+}

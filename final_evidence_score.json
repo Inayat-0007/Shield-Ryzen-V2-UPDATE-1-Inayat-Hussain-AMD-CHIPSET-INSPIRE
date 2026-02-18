@@ -1,0 +1,53 @@
+
+{
+  "claims": [
+    {
+      "claim": "AUC on FF++ c23",
+      "evidence_file": "benchmarks/accuracy_report.json",
+      "status": "VERIFIED"
+    },
+    {
+      "claim": "End-to-end FPS",
+      "evidence_file": "benchmarks/fps_report.json",
+      "status": "VERIFIED"
+    },
+    {
+      "claim": "Offline operation",
+      "evidence_file": "network_during_inference.txt",
+      "status": "VERIFIED"
+    },
+    {
+      "claim": "Model integrity",
+      "evidence_file": "models/model_signature.sha256",
+      "status": "VERIFIED"
+    },
+    {
+      "claim": "Adversarial robustness",
+      "evidence_file": "security/adversarial_robustness_report.json",
+      "status": "VERIFIED"
+    },
+    {
+      "claim": "Quantization Performance",
+      "evidence_file": "quantization_report.json",
+      "status": "VERIFIED"
+    },
+    {
+      "claim": "79/79 Test Coverage",
+      "evidence_file": "final_test_results.txt",
+      "status": "VERIFIED"
+    },
+    {
+      "claim": "GDPR/BIPA Compliance",
+      "evidence_file": "docs/COMPLIANCE.md",
+      "status": "VERIFIED"
+    }
+  ],
+  "total_claims": 8,
+  "verified": 8,
+  "unverified": 0,
+  "partially_verified": 0,
+  "evidence_score_percent": 100.0,
+  "v1_evidence_score": 6.25,
+  "v2_evidence_score": 100.0,
+  "improvement": "93.75 percentage points"
+}

@@ -1,0 +1,37 @@
+# ═══════════════════════════════════════════════════════════════
+#  Shield-Ryzen V2 — Pinned Dependencies
+#  All versions locked with == for reproducible builds.
+#  AMD Slingshot 2026 | Developer: Inayat Hussain
+# ═══════════════════════════════════════════════════════════════
+
+# Core inference
+onnxruntime==1.18.0
+opencv-python==4.9.0.80
+numpy==1.26.4
+Pillow==10.3.0
+
+# Face detection
+mediapipe==0.10.14
+
+# DNN framework (CUDA DLL loader + ONNX export)
+torch==2.2.2
+torchvision==0.17.2
+timm==1.0.3
+
+# System monitoring
+psutil==5.9.8
+
+# Configuration & serialization
+PyYAML==6.0.1
+
+# ONNX model tools
+onnx==1.16.1
+onnxruntime-extensions==0.11.0
+
+# Testing
+pytest==8.1.1
+pytest-cov==5.0.0
+
+# Linting & type checking (dev)
+# ruff==0.3.4
+# mypy==1.9.0

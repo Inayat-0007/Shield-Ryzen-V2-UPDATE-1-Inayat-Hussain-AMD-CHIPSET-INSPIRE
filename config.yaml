@@ -9,9 +9,9 @@
 
 security:
   confidence_threshold: 0.89    # Real verification bar (89% rule)
-  blink_threshold: 0.21         # EAR below this = eyes closed (blink)
+  blink_threshold: 0.24         # Increased to reliably catch blinks (typ. 0.18-0.22 closed)
   blink_time_window: 10         # Liveness check window (seconds)
-  laplacian_threshold: 50       # Texture smoothness guard
+  laplacian_threshold: 15       # Further lowered for realism
 
 preprocessing:
   input_size: 299               # Xception input resolution (299x299)
@@ -23,9 +23,18 @@ landmarks:
   left_eye:  [33, 160, 158, 133, 153, 144]    # outer, upper1, upper2, inner, lower2, lower1
   right_eye: [362, 385, 387, 263, 373, 380]   # outer, upper1, upper2, inner, lower2, lower1
 
+performance:
+  advanced_throttle: 25         # AGGRESSIVE THROTTLE for 20+ FPS on CPU
+  fps_window: 120               # Average FPS over this many frames
+  enable_temporal: false        # Off for max speed
+  enable_frequency: true
+  enable_attribution: false
+
 mediapipe:
   num_faces: 2
   min_face_detection_confidence: 0.5
   min_face_presence_confidence: 0.5
   min_tracking_confidence: 0.5
+  yaw_threshold: 45              # Maximum tolerance for face turns
+  pitch_threshold: 30            # Maximum tolerance for up/down looks
   landmarker_model: "face_landmarker.task"

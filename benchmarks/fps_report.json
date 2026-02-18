@@ -1,0 +1,38 @@
+{
+  "hardware": {
+    "cpu": "Intel64 Family 6 Model 165 Stepping 2, GenuineIntel",
+    "cpu_model": "AMD64",
+    "ram_gb": 16.99,
+    "os": "Windows-11-10.0.26200-SP0",
+    "python": "3.13.7",
+    "onnxruntime": "1.24.1",
+    "opencv": "4.13.0",
+    "npu": "AMD XDNA (Detection logic placeholder)",
+    "npu_tops": "Unknown"
+  },
+  "engine_type": "onnx (fallback)",
+  "duration_seconds": 10,
+  "total_frames": 101,
+  "average_fps": 10.1,
+  "timing_breakdown_avg_ms": {
+    "capture": 97.95,
+    "face_detect": 1.64,
+    "inference": 0.0,
+    "liveness": 0.0,
+    "texture": 0.0,
+    "state_machine": 0.0,
+    "hud_render": 0.26,
+    "advanced_modules": 0.0,
+    "total": 51.65
+  },
+  "fps_percentiles": {
+    "p5": 0.0,
+    "p50": 93.5,
+    "p95": 111.34
+  },
+  "honest_claim": "End-to-end FPS: 10 (measured on AMD64, including all pipeline stages, averaged over 10s)",
+  "baseline_comparison": {
+    "baseline_fps": 15.0,
+    "improvement_percent": -32.67
+  }
+}

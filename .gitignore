@@ -21,6 +21,13 @@ shield_ryzen_v2_prep.onnx
 
 # Calibration Data
 calibration_data/
+data/calibration_set_v2/
+
+# Generated reports & benchmarks
+benchmarks/*_results.json
+evaluation/*_results.json
+scripts/*_report.json
+logs/
 
 # Debug / Error screenshots
 errors/
