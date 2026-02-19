@@ -93,17 +93,17 @@ class SkinReflectancePlugin(ShieldPlugin):
             confidence = 0.5
             explanation = "Texture consistent with skin"
             
-            if highlight_ratio > 0.15:
+            if highlight_ratio > 0.25:
                 verdict = "FAKE"
                 confidence = 0.7
                 explanation = f"Unnatural specularity ({highlight_ratio:.1%})"
-            elif mean_grad < 2.0: # Very smooth
+            elif mean_grad < 1.5: # Very smooth — likely mask or heavy filter
                 verdict = "FAKE"
                 confidence = 0.6
                 explanation = f"Surface too smooth (Mask/Filter? Grad={mean_grad:.1f})"
-            elif mean_grad > 50.0: # Very noisy
-                verdict = "FAKE" 
-                confidence = 0.6
+            elif mean_grad > 80.0: # Extremely noisy — likely screen Moiré
+                verdict = "UNCERTAIN"
+                confidence = 0.4
                 explanation = f"High frequency noise (Screen/Moiré? Grad={mean_grad:.1f})"
             
             return {

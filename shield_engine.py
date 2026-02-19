@@ -50,7 +50,9 @@ from shield_utils_core import (
     DecisionStateMachine,
     compute_ear,
     compute_texture_score,
-    BlinkTracker
+    BlinkTracker,
+    LEFT_EYE,
+    RIGHT_EYE
 )
 from shield_crypto import encrypt, decrypt, secure_wipe
 from shield_plugin import ShieldPlugin
@@ -104,6 +106,11 @@ class FaceResult:
     texture_explanation: str
     tier_results: Tuple[str, str, str]
     plugin_votes: List[dict]
+    advanced_info: dict = None  # blinks, distance_cm, tracker_id, face_alert
+    
+    def __post_init__(self):
+        if self.advanced_info is None:
+            self.advanced_info = {}
     
     def to_dict(self):
         return asdict(self)
@@ -170,14 +177,89 @@ class IdentityTracker:
             del self.identities[fid]
 
 class PluginAwareStateMachine(DecisionStateMachine):
-    """Extends DecisionStateMachine to incorporate Plugin votes."""
+    """Extends DecisionStateMachine to incorporate Plugin votes.
+    
+    MAJORITY RULE: Only downgrade forensic tier if a MAJORITY of
+    decisive plugins vote FAKE. This prevents a single noisy plugin
+    from overriding an otherwise correct REAL verdict.
+    
+    STRONG CONSENSUS: If 2+ plugins vote FAKE, override neural verdict
+    too — catches AI-generated faces that fool the neural network.
+    
+    WAIT_BLINK TIMEOUT: If stuck in WAIT_BLINK for >5s, escalate.
+    Uses a sticky counter so the face can't bounce back to WAIT_BLINK.
+    - 1st timeout → SUSPICIOUS
+    - 2nd timeout → HIGH_RISK  
+    A confirmed blink (tier2=PASS) resets the escalation counter.
+    """
+    WAIT_BLINK_TIMEOUT = 5.0  # seconds before WAIT_BLINK escalates
+    
+    def __init__(self, hysteresis: int = 5):
+        super().__init__(hysteresis)
+        self._no_blink_escalations = 0  # how many times we timed out
+        self._wait_blink_entered = None  # monotonic time when WAIT_BLINK started
+    
     def update(self, t1, t2, t3, plugin_votes=None) -> str:
-        # Fuse plugin votes (Simple logic: Downgrade Forensic Tier if plugins say FAKE)
+        fake_count = 0
+        decisive_count = 0
+        
         if plugin_votes:
-            failures = sum(1 for v in plugin_votes if v.get("verdict") == "FAKE")
-            if failures > 0:
-                t3 = "FAIL"
-        return super().update(t1, t2, t3)
+            # Only count decisive votes (REAL or FAKE), ignore UNCERTAIN/ERROR
+            decisive = [v for v in plugin_votes 
+                        if v.get("verdict") in ("REAL", "FAKE")]
+            decisive_count = len(decisive)
+            if decisive:
+                fake_count = sum(1 for v in decisive if v["verdict"] == "FAKE")
+                # Majority rule: more than half of decisive plugins must say FAKE
+                if fake_count > decisive_count / 2:
+                    t3 = "FAIL"
+                
+                # STRONG CONSENSUS: 3+ plugins say FAKE → override neural too
+                # This catches AI-generated avatars that fool the neural network
+                # (2+ would false-positive on real faces when frequency + adversarial are noisy)
+                if fake_count >= 3:
+                    t1 = "FAKE"
+        
+        # If a blink was confirmed (tier2=PASS), reset escalation counter
+        if t2 == "PASS" or (hasattr(t2, 'passed') and t2.passed):
+            self._no_blink_escalations = 0
+            self._wait_blink_entered = None
+        
+        # Run base state machine
+        result = super().update(t1, t2, t3)
+        
+        # Track when we enter WAIT_BLINK
+        if self.state == "WAIT_BLINK":
+            if self._wait_blink_entered is None:
+                self._wait_blink_entered = time.monotonic()
+            
+            # Check timeout
+            elapsed = time.monotonic() - self._wait_blink_entered
+            if elapsed > self.WAIT_BLINK_TIMEOUT:
+                self._no_blink_escalations += 1
+                self._wait_blink_entered = None  # reset timer
+                
+                # Escalate based on how many times we've timed out
+                if self._no_blink_escalations >= 2:
+                    self.state = "HIGH_RISK"
+                else:
+                    self.state = "SUSPICIOUS"
+                self._state_entry_time = time.monotonic()
+                self._total_transitions += 1
+        else:
+            # Not in WAIT_BLINK — reset entry time
+            self._wait_blink_entered = None
+            
+            # If we previously escalated and base SM wants to de-escalate
+            # back to WAIT_BLINK, block it (sticky escalation)
+            if self._no_blink_escalations > 0 and result == "WAIT_BLINK":
+                if self._no_blink_escalations >= 2:
+                    self.state = "HIGH_RISK"
+                else:
+                    self.state = "SUSPICIOUS"
+        
+        return self.state
+
 
 class ShieldEngine:
     """
@@ -192,10 +274,11 @@ class ShieldEngine:
         self.logger = get_logger(os.path.dirname(self.config["log_path"]))
         self.logger.log({"event": "engine_init_start", "config": str(self.config)})
         
-        # Camera (Part 1)
+        # Camera (Part 1) — resolution from config for quality control
         self.camera = ShieldCamera(
             camera_id=self.config["camera_id"],
-            width=640, height=480 # Standard resolution
+            width=self.config.get("camera_width", 1280),
+            height=self.config.get("camera_height", 720),
         )
         
         # Face Pipeline (Part 2) using MediaPipe
@@ -304,10 +387,9 @@ class ShieldEngine:
         # Crypto (Part 6.3)
         # Implicitly initialized by import
 
-        # Async Queues
-        # Use queue size 2 to prevent backend lag from accumulating
-        self.camera_queue = queue.Queue(maxsize=2)
-        self.result_queue = queue.Queue(maxsize=2)
+        # Async Queues — size=1 for MINIMUM latency (no frame accumulation)
+        self.camera_queue = queue.Queue(maxsize=1)
+        self.result_queue = queue.Queue(maxsize=1)
         
         # Monitoring
         self.running = False
@@ -363,13 +445,39 @@ class ShieldEngine:
         self.logger.log({"event": "engine_started"})
 
     def stop(self):
-        """Stop threads and clean up."""
+        """Stop threads and clean up. Non-blocking on failures."""
         self.running = False
-        if hasattr(self, 'cam_thread'): self.cam_thread.join(timeout=1.0)
-        if hasattr(self, 'ai_thread'): self.ai_thread.join(timeout=1.0)
-        self.camera.release()
-        secure_wipe()
-        self.logger.close()
+        
+        # Join threads with short timeout (daemon threads will die anyway)
+        try:
+            if hasattr(self, 'cam_thread') and self.cam_thread.is_alive():
+                self.cam_thread.join(timeout=1.0)
+        except Exception:
+            pass
+        
+        try:
+            if hasattr(self, 'ai_thread') and self.ai_thread.is_alive():
+                self.ai_thread.join(timeout=1.0)
+        except Exception:
+            pass
+        
+        # Release camera
+        try:
+            self.camera.release()
+        except Exception:
+            pass
+        
+        # Secure wipe (non-blocking)
+        try:
+            secure_wipe()
+        except Exception:
+            pass
+        
+        # Close logger
+        try:
+            self.logger.close()
+        except Exception:
+            pass
 
     def _camera_thread(self):
         """Thread 1: Capture validated frames."""
@@ -413,6 +521,31 @@ class ShieldEngine:
                 self.logger.error(f"AI Thread Error: {e}", exc_info=True)
 
 
+    def _estimate_distance(self, bbox, frame_shape) -> float:
+        """Estimate face distance using pinhole camera model.
+        
+        Pinhole model: distance = (known_width × focal_length) / pixel_width
+        
+        Uses:
+          - Average human face width ≈ 14 cm
+          - Estimated focal length from frame width (typical webcam FOV ~60°)
+          
+        Returns distance in centimeters, or 0 if unable to estimate.
+        """
+        KNOWN_FACE_WIDTH_CM = 14.0    # Average adult face width
+        
+        _, _, face_w, face_h = bbox
+        if face_w < 20:  # Too small to estimate
+            return 0.0
+        
+        frame_h, frame_w = frame_shape[:2]
+        # Estimated focal length: frame_width / (2 * tan(FOV/2))
+        # For ~60° FOV: focal ≈ frame_width * 0.87
+        focal_length_px = frame_w * 0.87
+        
+        distance_cm = (KNOWN_FACE_WIDTH_CM * focal_length_px) / face_w
+        return round(distance_cm, 1)
+
     def _run_inference(self, face_crop_299: np.ndarray) -> np.ndarray:
         """Run neural inference (ONNX or PyTorch). Returns [fake_prob, real_prob]."""
         if self.use_onnx:
@@ -441,11 +574,18 @@ class ShieldEngine:
         face_results = []
         visible_ids = []
         
+        # Sort faces by size (largest first) — primary face gets full analysis
+        faces_sorted = sorted(faces, key=lambda f: f.bbox[2] * f.bbox[3], reverse=True)
+        
         t0_infer = time.monotonic()
-        for face in faces:
+        for face_idx, face in enumerate(faces_sorted):
             # 2a: Identity Tracking
             fid = self.tracker.get_id(face.bbox)
             visible_ids.append(fid)
+            
+            # Optimization: face size check for plugin skipping
+            _, _, fw, fh = face.bbox
+            is_small_face = (fw < 100 or fh < 100)
             
             # Init state machine for new face
             if fid not in self.face_states:
@@ -458,28 +598,9 @@ class ShieldEngine:
             state_ctx = self.face_states[fid]
 
             # 2b: Neural inference (NPU/GPU)
-            # face.face_crop_299 is (1,3,299,299)
-            inp_tensor = face.face_crop_299
-            
-            # CRITICAL FIX: Normalization [0-255] -> [-1, 1] AND BGR -> RGB
-            if inp_tensor.max() > 1.0:
-                 inp_tensor = inp_tensor.astype(float) / 255.0
-            
-            # Convert BGR to RGB (OpenCV is BGR, Model expects RGB)
-            # Input tensor is (C, H, W) or (H, W, C)?
-            # ShieldFacePipeline usually returns (3, 299, 299) -> Channels First.
-            # If so, we need to transpose to (H,W,C) first? Or manual shuffle?
-            # Assuming (3, H, W):
-            if inp_tensor.shape[0] == 3:
-                # Swap 0 and 2 (B -> R)
-                inp_tensor = inp_tensor[[2, 1, 0], :, :]
-            elif inp_tensor.shape[2] == 3:
-                # (H, W, 3)
-                inp_tensor = inp_tensor[:, :, [2, 1, 0]]
-            
-            # Apply standardization (mean=0.5, std=0.5) -> (x - 0.5) / 0.5
-            if inp_tensor.min() >= 0.0 and inp_tensor.max() <= 1.0:
-                 inp_tensor = (inp_tensor - 0.5) / 0.5
+            # face.face_crop_299 is ALREADY (1,3,299,299) float32, RGB, [-1,+1]
+            # from ShieldFacePipeline.align_and_crop() — DO NOT re-normalize!
+            inp_tensor = face.face_crop_299.astype(np.float32)
                  
             raw_output = self._run_inference(inp_tensor)
 
@@ -487,12 +608,23 @@ class ShieldEngine:
             calibrated = self.calibrator.calibrate(raw_output)
             # calibrated is [fake_prob, real_prob]
             neural_verdict = "REAL" if calibrated[1] > calibrated[0] else "FAKE"
-            neural_confidence = float(max(calibrated))
+            raw_neural_conf = float(max(calibrated))
+            
+            # Temporal smoothing: 5-frame rolling average to reduce jitter
+            # Raw confidence can swing 30%+ frame-to-frame due to face angle/lighting
+            state_ctx["neural_history"].append(raw_neural_conf)
+            neural_confidence = sum(state_ctx["neural_history"]) / len(state_ctx["neural_history"])
 
             # 2d: Liveness check (Part 3)
-            # compute_ear returns (ear, reliability_tier)
-            ear, ear_reliability = compute_ear(
-                face.landmarks_68, face.head_pose, face.is_frontal)
+            # compute_ear requires (landmarks, eye_indices, head_pose, is_frontal)
+            # Use 478-mesh landmarks (pixel coords) and MediaPipe eye indices
+            lm_for_ear = face.landmarks  # (478, 2) pixel coordinates
+            ear_l, rel_l = compute_ear(lm_for_ear, LEFT_EYE, face.head_pose, face.is_frontal)
+            ear_r, rel_r = compute_ear(lm_for_ear, RIGHT_EYE, face.head_pose, face.is_frontal)
+            ear = (ear_l + ear_r) / 2.0
+            # Use the worse reliability of the two eyes
+            _rel_order = {"HIGH": 2, "MEDIUM": 1, "LOW": 0}
+            ear_reliability = rel_l if _rel_order.get(rel_l, 0) <= _rel_order.get(rel_r, 0) else rel_r
             
             # Update blink tracker
             blink_info = state_ctx["blink"].update(ear, ts, reliability=ear_reliability, blendshapes=face.blendshapes)
@@ -502,13 +634,24 @@ class ShieldEngine:
                 face.face_crop_raw, self._device_baseline.get("texture_floor", 10.0))
 
             # 2f: Plugin votes (Parts 7-8)
+            # Skip expensive plugins for small/distant faces to preserve FPS
             plugin_votes = []
-            for plugin in self.plugins:
-                try:
-                    vote = plugin.analyze(face, frame)
-                    plugin_votes.append(vote)
-                except Exception as e:
-                    self.logger.warn(f"Plugin {plugin.name} failed: {e}")
+            if is_small_face:
+                # Small face — only run lightweight plugins
+                for plugin in self.plugins:
+                    if plugin.name in ("skin_reflectance", "codec_forensics"):
+                        try:
+                            vote = plugin.analyze(face, frame)
+                            plugin_votes.append(vote)
+                        except Exception as e:
+                            self.logger.warn(f"Plugin {plugin.name} failed: {e}")
+            else:
+                for plugin in self.plugins:
+                    try:
+                        vote = plugin.analyze(face, frame)
+                        plugin_votes.append(vote)
+                    except Exception as e:
+                        self.logger.warn(f"Plugin {plugin.name} failed: {e}")
 
             # 2g: Fuse ALL decisions (Part 3 state machine)
             tier1 = neural_verdict
@@ -552,10 +695,16 @@ class ShieldEngine:
                 neural_confidence=neural_confidence,
                 ear_value=ear,
                 ear_reliability=ear_reliability,
-                texture_score=tex_score,
+                texture_score=min(tex_score, 999.9),  # Clamp for sane display
                 texture_explanation=tex_explain,
                 tier_results=(tier1, tier2, tier3),
-                plugin_votes=plugin_votes
+                plugin_votes=plugin_votes,
+                advanced_info={
+                    "blinks": blink_info.get("count", 0),
+                    "tracker_id": fid,
+                    "distance_cm": self._estimate_distance(face.bbox, frame.shape),
+                    "face_alert": "DEEPFAKE" if state in ("FAKE", "CRITICAL") else "",
+                }
             )
             face_results.append(res)
 

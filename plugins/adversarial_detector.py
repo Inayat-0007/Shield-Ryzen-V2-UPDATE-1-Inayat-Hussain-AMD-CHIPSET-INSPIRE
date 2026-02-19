@@ -53,7 +53,8 @@ class AdversarialPatchPlugin(ShieldPlugin):
             # Real face edges (features) are usually < 100 except eyes/nostrils.
             
             # Thresholding: "Strong Edges"
-            edge_mask = mag > 150
+            # Raised from 150 — real face features (brows, lashes) hit 150-200
+            edge_mask = mag > 250
             edge_density = np.sum(edge_mask) / mag.size
             
             # Check for Cluster Density (Patches are dense)
@@ -79,14 +80,14 @@ class AdversarialPatchPlugin(ShieldPlugin):
                 # Simple heuristic: If max gradient > 500 (impossible?) 255/1px Sobel creates range?
                 # Sobel 3x3 scale factor implies larger values. Max possible 4*255.
                 
-                if area > (gray.size * 0.02): # >2% of face
+                if area > (gray.size * 0.05): # >5% of face (raised from 2%)
                     mask = np.zeros_like(gray, dtype=np.uint8)
                     cv2.drawContours(mask, [cnt], -1, 255, -1)
                     # Check internal density
                     internal_edges = np.sum(edge_mask[mask==255])
                     density = internal_edges / area
                     
-                    if density > 0.3: # Very noisy/busy texture
+                    if density > 0.5: # Very noisy/busy texture (raised from 0.3)
                         significant_patches += 1
                         if area > max_area: max_area = area
 
@@ -94,7 +95,7 @@ class AdversarialPatchPlugin(ShieldPlugin):
             confidence = 0.5
             explanation = "No adversarial artifacts"
             
-            if significant_patches > 0:
+            if significant_patches >= 2:  # Need 2+ patches (1 could be glasses/eyes)
                 verdict = "FAKE"
                 confidence = 0.75
                 explanation = f"Detected {significant_patches} high-gradient patches (Max Area {max_area/gray.size:.1%})"

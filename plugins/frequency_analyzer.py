@@ -84,10 +84,14 @@ class FrequencyAnalyzerPlugin(ShieldPlugin):
             confidence = 0.6
             explanation = f"Normal spectrum (HFER {hf_ratio:.4f})"
             
-            if hf_ratio < 0.05: # Extremely smooth (Blur/GAN)
+            if hf_ratio < 0.015: # Extremely smooth (GAN generated)
                 verdict = "FAKE"
                 confidence = 0.8
-                explanation = f"Suppressed high-freq energy (HFER {hf_ratio:.4f} < 0.05)"
+                explanation = f"Suppressed high-freq energy (HFER {hf_ratio:.4f} < 0.015)"
+            elif hf_ratio < 0.03: # Moderately smooth (could be webcam compression)
+                verdict = "SUSPICIOUS"
+                confidence = 0.5
+                explanation = f"Low high-freq energy (HFER {hf_ratio:.4f} < 0.03)"
             elif hf_ratio > 0.50: # Extremely noisy (Noise injection?)
                  verdict = "SUSPICIOUS" # Could be sensor noise
                  confidence = 0.5

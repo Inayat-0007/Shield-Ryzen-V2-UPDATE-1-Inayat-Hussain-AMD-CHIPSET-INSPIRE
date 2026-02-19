@@ -97,13 +97,13 @@ class HeartbeatPlugin(ShieldPlugin):
                 verdict = "REAL"
                 confidence = min(snr / 4.0, 1.0) # Map SNR 2.0-6.0 to conf 0.5-1.0
                 explanation = f"Heartbeat detected: {int(bpm)} BPM (Strong Signal)"
-            elif snr < 1.5:
-                # Weak signal -> Likely fake (static/replay)
-                # But could be bad lighting. If lighting is GOOD (check laplacian?), we can say FAKE.
-                # Conservative: If signal is extremely flat/noisy -> FAKE
-                verdict = "FAKE"
-                confidence = 0.6
-                explanation = f"No heartbeat signal (SNR {snr:.2f})"
+            elif snr < 1.0:
+                # Very weak signal after full buffer — likely static/replay
+                # But still conservative: UNCERTAIN, not FAKE
+                # Only trust this as FAKE if multiple buffers confirm
+                verdict = "UNCERTAIN"
+                confidence = 0.4
+                explanation = f"Weak rPPG signal (SNR {snr:.2f}) — inconclusive"
             else:
                 explanation = f"Noisy signal (BPM {int(bpm)}, SNR {snr:.2f})"
 
