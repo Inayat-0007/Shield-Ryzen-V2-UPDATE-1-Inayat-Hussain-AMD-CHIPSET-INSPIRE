@@ -21,7 +21,7 @@ except ImportError:
     cv2 = None
 
 from v3_xdna_engine import ShieldXDNAEngine
-from v3_int8_engine import ShieldEngine
+from shield_engine import ShieldEngine
 
 def benchmark_end_to_end_fps(
     duration_seconds: int = 60,
@@ -78,9 +78,9 @@ def benchmark_end_to_end_fps(
         engine_type = "onnx"
 
     # 3. Warmup
-    print("Warmup...")
-    for _ in range(10):
-        engine.process_frame()
+    print("Warmup (Starting Threads)...")
+    engine.start()
+    time.sleep(2.0) # Let camera settle
 
     # 4. Benchmark Loop
     print(f"Running for {duration_seconds} seconds...")
@@ -93,21 +93,25 @@ def benchmark_end_to_end_fps(
     }
     
     while (time.time() - start_time) < duration_seconds:
-        result = engine.process_frame()
-        frame_count += 1
-        
-        # Collect timings from result.timing_breakdown
-        # Standard keys from engine: capture_ms, detect_ms, infer_total_ms...
-        t = result.timing_breakdown
-        timings["capture"].append(t.get("capture_ms", 0))
-        timings["detect"].append(t.get("detect_ms", 0))
-        timings["infer"].append(t.get("infer_total_ms", 0))
-        timings["liveness"].append(t.get("liveness_total_ms", 0))
-        timings["texture"].append(t.get("texture_total_ms", 0))
-        timings["state"].append(t.get("state_ms", 0))
-        timings["hud"].append(t.get("hud_ms", 0)) # From Part 7
-        timings["advanced"].append(t.get("advanced_ms", 0)) # From Part 8
-        timings["total"].append(t.get("total_ms", 0))
+        result = engine.get_latest_result()
+        if result:
+            frame_count += 1
+            
+            # Collect timings from result.timing_breakdown
+            t = result.timing_breakdown
+            timings["capture"].append(t.get("capture_ms", 0))
+            timings["detect"].append(t.get("detect_ms", 0))
+            timings["infer"].append(t.get("infer_total_ms", 0))
+            timings["liveness"].append(t.get("liveness_total_ms", 0))
+            timings["texture"].append(t.get("texture_total_ms", 0))
+            timings["state"].append(t.get("state_ms", 0))
+            timings["hud"].append(t.get("hud_ms", 0))
+            timings["advanced"].append(t.get("advanced_ms", 0))
+            timings["total"].append(t.get("total_ms", 0))
+        else:
+            time.sleep(0.001) # Yield if queue empty
+
+    engine.stop()
 
     avg_fps = frame_count / duration_seconds
     

@@ -42,13 +42,27 @@ try:
 except ImportError:
     ort = None  # type: ignore[assignment]
 
+try:
+    import cpuinfo
+except ImportError:
+    cpuinfo = None  # type: ignore[assignment]
+
 
 # ─── Hardware Info ────────────────────────────────────────────
 
 def _collect_hardware_info() -> dict[str, Any]:
     """Gather reproducible hardware & software environment info."""
+    # Try py-cpuinfo for accurate CPU brand string
+    cpu_brand = platform.processor() or "Unknown"
+    if cpuinfo is not None:
+        try:
+            info = cpuinfo.get_cpu_info()
+            cpu_brand = info.get("brand_raw", cpu_brand)
+        except Exception:
+            pass  # Fall back to platform.processor()
+
     hw: dict[str, Any] = {
-        "cpu": platform.processor() or "Unknown",
+        "cpu": cpu_brand,
         "cpu_model": platform.machine(),
         "ram_gb": round(psutil.virtual_memory().total / 1e9, 2) if psutil else "N/A",
         "os": platform.platform(),
@@ -238,6 +252,77 @@ def _sample_utilization(duration_seconds: int = 10) -> dict[str, Any]:
     }
 
 
+# ─── End-to-End Pipeline Benchmark ───────────────────────────
+
+def _benchmark_end_to_end(
+    duration_seconds: int = 30,
+    camera_id: int = 0,
+) -> dict[str, Any]:
+    """Run the full ShieldEngine pipeline and measure real-world FPS.
+
+    This measures TRUE end-to-end performance including ALL stages:
+    camera capture + face detection + all 3 tiers + HUD rendering.
+    """
+    results: dict[str, Any] = {"stage": "end_to_end_pipeline"}
+
+    try:
+        from shield_utils_core import load_config
+        config = load_config()
+        config["camera_id"] = camera_id
+        config["use_audio"] = False  # Disable audio for benchmark
+
+        from v3_int8_engine import ShieldEngine
+        engine = ShieldEngine(config)
+    except Exception as e:
+        results["error"] = f"Cannot initialize ShieldEngine: {e}"
+        return results
+
+    frame_timings: list[dict[str, float]] = []
+    start = time.monotonic()
+
+    try:
+        while (time.monotonic() - start) < duration_seconds:
+            t0 = time.perf_counter()
+            result = engine.process_frame()
+            total_ms = (time.perf_counter() - t0) * 1000.0
+
+            entry = {"total_ms": round(total_ms, 3)}
+            if hasattr(result, "timing_breakdown") and result.timing_breakdown:
+                for k, v in result.timing_breakdown.items():
+                    entry[k] = round(v, 3) if isinstance(v, (int, float)) else v
+            frame_timings.append(entry)
+    except Exception as e:
+        results["error_during_run"] = str(e)
+    finally:
+        engine.release()
+
+    if frame_timings:
+        totals = [f["total_ms"] for f in frame_timings]
+        results["frames_processed"] = len(frame_timings)
+        results["fps_real"] = round(1000.0 / statistics.mean(totals), 2)
+        results["total_time_ms"] = {
+            "mean": round(statistics.mean(totals), 3),
+            "median": round(statistics.median(totals), 3),
+            "p95": round(sorted(totals)[int(len(totals) * 0.95)], 3),
+            "p99": round(sorted(totals)[int(len(totals) * 0.99)], 3),
+            "min": round(min(totals), 3),
+            "max": round(max(totals), 3),
+        }
+
+        # Per-stage breakdown (average)
+        stages = ["capture_ms", "detect_ms", "infer_total_ms",
+                  "liveness_total_ms", "texture_total_ms", "hud_ms"]
+        results["per_stage_avg_ms"] = {}
+        for stage in stages:
+            vals = [f[stage] for f in frame_timings if stage in f]
+            if vals:
+                results["per_stage_avg_ms"][stage] = round(statistics.mean(vals), 3)
+    else:
+        results["error"] = "No frames processed"
+
+    return results
+
+
 # ─── Main Entry Point ────────────────────────────────────────
 
 def capture_baseline_metrics(
@@ -288,7 +373,7 @@ def capture_baseline_metrics(
         print(f"       ⚠️  {results['camera'].get('error', 'Unknown error')}")
 
     # 3. Inference benchmark
-    print("\n[3/4] Benchmarking ONNX inference (200 runs each)...")
+    print("\n[3/5] Benchmarking ONNX inference (200 runs each)...")
     results["inference"] = _benchmark_inference()
     for label in ["int8", "fp32"]:
         if label in results["inference"] and "latency_ms" in results["inference"][label]:
@@ -298,8 +383,22 @@ def capture_baseline_metrics(
                 f"({info['theoretical_fps']} FPS) via {info['provider']}"
             )
 
-    # 4. System utilization
-    print("\n[4/4] Sampling system utilization (10s)...")
+    # 4. End-to-end pipeline benchmark
+    e2e_duration = min(duration_seconds, 30)  # Cap at 30s for E2E
+    print(f"\n[4/5] End-to-end pipeline benchmark ({e2e_duration}s)...")
+    results["end_to_end"] = _benchmark_end_to_end(e2e_duration)
+    if "fps_real" in results["end_to_end"]:
+        print(f"       Real FPS: {results['end_to_end']['fps_real']}")
+        print(f"       Frame time: {results['end_to_end']['total_time_ms']['mean']:.1f} ms (mean)")
+        if "per_stage_avg_ms" in results["end_to_end"]:
+            for stage, val in results["end_to_end"]["per_stage_avg_ms"].items():
+                print(f"         {stage}: {val:.1f} ms")
+    else:
+        err = results["end_to_end"].get("error", "Unknown error")
+        print(f"       ⚠️  {err}")
+
+    # 5. System utilization
+    print("\n[5/5] Sampling system utilization (10s)...")
     results["utilization"] = _sample_utilization(10)
     if "cpu_percent" in results["utilization"]:
         print(f"       CPU: {results['utilization']['cpu_percent']['mean']}% avg")

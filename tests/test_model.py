@@ -1,260 +1,345 @@
 """
-Shield-Ryzen V2 -- Model Integrity Tests
-=========================================
-10 comprehensive tests for:
-- Checkpoint key verification
-- Model architecture compliance
-- Cryptographic hash integrity
-- Input/Output shapes
-- Adversarial robustness suite functionality
+Shield-Ryzen V2 — Model Verification Tests (TASK 4.6)
+======================================================
+8 tests covering checkpoint integrity, key mapping,
+model shape verification, reference output regression,
+and tamper detection.
+
+Tests:
+  1. test_checkpoint_key_count_matches_actual
+  2. test_all_keys_mapped_successfully
+  3. test_no_missing_model_keys
+  4. test_model_hash_matches_expected
+  5. test_model_input_shape_correct
+  6. test_model_output_shape_correct
+  7. test_model_output_on_reference_image
+  8. test_tampered_model_raises_security_error
 
 Developer: Inayat Hussain | AMD Slingshot 2026
-Part 4 of 12 -- Neural Model Verification
+Part 4 of 14 — Neural Model Verification & Integrity
 """
+
+from __future__ import annotations
 
 import hashlib
 import json
 import os
 import sys
 import tempfile
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
 import numpy as np
 import pytest
 import torch
-import cv2
-from PIL import Image
+import timm
 
-# Add project root to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from shield_xception import ShieldXception, load_model_with_verification, SecurityError
-from verify_model import verify_checkpoint
-from security.adversarial_test_suite import run_adversarial_robustness
+from shield_xception import (
+    ShieldXception,
+    SecurityError,
+    ModelTamperingError,
+    ModelShapeError,
+    MODEL_EXPECTED_HASH,
+    MODEL_EXPECTED_KEY_COUNT,
+    MODEL_INPUT_SHAPE,
+    MODEL_OUTPUT_SHAPE,
+    load_model_with_verification,
+    _compute_file_hash,
+)
+from verify_model import verify_checkpoint, _keys_are_equivalent
 
-# Constants
-MODEL_PATH = "ffpp_c23.pth"
-SIG_PATH = os.path.join("models", "model_signature.sha256")
 
 # ═══════════════════════════════════════════════════════════════
-# TEST 1: Checkpoint Key Count
+#  FIXTURES
 # ═══════════════════════════════════════════════════════════════
-def test_checkpoint_key_count_matches_claim():
-    """Verify the checkpoint has exactly 276 weight keys."""
-    assert os.path.exists(MODEL_PATH), "Model file missing"
-    checkpoint = torch.load(MODEL_PATH, map_location="cpu", weights_only=True)
-    
-    # Handle direct dict or state_dict wrapper
-    if isinstance(checkpoint, dict) and 'state_dict' in checkpoint:
-        keys = checkpoint['state_dict'].keys()
+
+CHECKPOINT_PATH = str(Path(__file__).resolve().parent.parent / "ffpp_c23.pth")
+SIGNATURE_PATH = str(Path(__file__).resolve().parent.parent / "models" / "model_signature.sha256")
+REPORT_PATH = str(Path(__file__).resolve().parent.parent / "model_verification_report.json")
+REF_OUTPUT_PATH = str(Path(__file__).resolve().parent.parent / "models" / "reference_output.json")
+
+# Whether the actual checkpoint file is available (skip heavy tests if not)
+HAS_CHECKPOINT = os.path.exists(CHECKPOINT_PATH)
+HAS_SIGNATURE = os.path.exists(SIGNATURE_PATH)
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Test 1: Key count matches actual checkpoint
+# ═══════════════════════════════════════════════════════════════
+
+@pytest.mark.skipif(not HAS_CHECKPOINT, reason="Checkpoint not available")
+def test_checkpoint_key_count_matches_actual():
+    """Verify the actual checkpoint has exactly MODEL_EXPECTED_KEY_COUNT keys."""
+    try:
+        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu", weights_only=True)
+    except Exception:
+        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu")
+
+    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
     else:
-        keys = checkpoint.keys()
-        
-    assert len(keys) == 276, f"Expected 276 keys, got {len(keys)}"
+        state_dict = checkpoint
+
+    actual_count = len(state_dict)
+    assert actual_count == MODEL_EXPECTED_KEY_COUNT, (
+        f"Checkpoint has {actual_count} keys, expected {MODEL_EXPECTED_KEY_COUNT}"
+    )
+
 
 # ═══════════════════════════════════════════════════════════════
-# TEST 2: All Keys Mapped Successfully
+#  Test 2: All checkpoint keys can be mapped to model keys
 # ═══════════════════════════════════════════════════════════════
+
+@pytest.mark.skipif(not HAS_CHECKPOINT, reason="Checkpoint not available")
 def test_all_keys_mapped_successfully():
-    """Verify verify_model.py reports adequate mapping success."""
-    if not os.path.exists("model_verification_report.json"):
-        # Run verification if report missing
-        verify_checkpoint(MODEL_PATH)
-        
-    with open("model_verification_report.json", "r") as f:
-        report = json.load(f)
-        
-    assert report["mapping_success_rate"] > 99.0, \
-        f"Mapping success rate too low: {report['mapping_success_rate']}%"
-    assert len(report["unmatched_checkpoint_keys"]) == 2, \
-        "Expected only 2 unmatched keys (fc wrapper differences)"
+    """Every checkpoint key must map to a model key via _keys_are_equivalent.
+
+    The FF++ checkpoint has 276 keys with 'model.' prefix.
+    274 map directly, 2 need FC head renaming (handled by _keys_are_equivalent).
+    After FC rename handling, ALL 276 should be matched.
+    """
+    try:
+        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu", weights_only=True)
+    except Exception:
+        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu")
+
+    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
+    else:
+        state_dict = checkpoint
+
+    # Create reference model
+    ref_model = timm.create_model("xception", pretrained=False, num_classes=2)
+    model_keys = list(ref_model.state_dict().keys())
+
+    unmatched = []
+    for ck in state_dict.keys():
+        found = any(_keys_are_equivalent(ck, mk) for mk in model_keys)
+        if not found:
+            unmatched.append(ck)
+
+    assert len(unmatched) == 0, (
+        f"{len(unmatched)} checkpoint keys could not be mapped: {unmatched}"
+    )
+
 
 # ═══════════════════════════════════════════════════════════════
-# TEST 3: No Missing Model Keys
+#  Test 3: No missing model keys (all timm keys have a checkpoint source)
 # ═══════════════════════════════════════════════════════════════
+
+@pytest.mark.skipif(not HAS_CHECKPOINT, reason="Checkpoint not available")
 def test_no_missing_model_keys():
-    """Ensure critical model layers aren't missing weights."""
-    with open("model_verification_report.json", "r") as f:
-        report = json.load(f)
-        
-    # timm legacy_xception matches well but might have minor naming diffs
-    # We checked unmatched_checkpoint_keys, now check missing_model_keys
-    # Expect 2 missing: fc.weight, fc.bias (renamed from last_linear)
-    missing = report["missing_model_keys"]
-    
-    # Filter out fc layer which is known to be renamed manually in loader
-    critical_missing = [k for k in missing if not k.startswith("fc.")]
-    assert len(critical_missing) == 0, \
-        f"Critical model weights missing from checkpoint: {critical_missing}"
+    """Every key in the reference timm model must be provided by the checkpoint."""
+    try:
+        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu", weights_only=True)
+    except Exception:
+        checkpoint = torch.load(CHECKPOINT_PATH, map_location="cpu")
+
+    if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+        state_dict = checkpoint["state_dict"]
+    else:
+        state_dict = checkpoint
+
+    ckpt_keys = list(state_dict.keys())
+
+    ref_model = timm.create_model("xception", pretrained=False, num_classes=2)
+    model_keys = list(ref_model.state_dict().keys())
+
+    missing = []
+    for mk in model_keys:
+        found = any(_keys_are_equivalent(ck, mk) for ck in ckpt_keys)
+        if not found:
+            missing.append(mk)
+
+    assert len(missing) == 0, (
+        f"{len(missing)} model keys have no checkpoint source: {missing}"
+    )
+
 
 # ═══════════════════════════════════════════════════════════════
-# TEST 4: Model Hash Matches Expected
+#  Test 4: SHA-256 hash matches expected
 # ═══════════════════════════════════════════════════════════════
+
+@pytest.mark.skipif(not HAS_CHECKPOINT, reason="Checkpoint not available")
 def test_model_hash_matches_expected():
-    """Verify the file on disk matches the signed hash."""
-    sha256 = hashlib.sha256()
-    with open(MODEL_PATH, "rb") as f:
-        for block in iter(lambda: f.read(4096), b""):
-            sha256.update(block)
-    actual = sha256.hexdigest()
-    
-    with open(SIG_PATH, "r") as f:
-        expected = f.read().strip()
-        
-    assert actual == expected, "Model file hash verification failed"
+    """SHA-256 hash of ffpp_c23.pth must match the compiled constant."""
+    actual_hash = _compute_file_hash(CHECKPOINT_PATH)
+
+    assert actual_hash == MODEL_EXPECTED_HASH, (
+        f"Hash mismatch!\n"
+        f"Expected: {MODEL_EXPECTED_HASH}\n"
+        f"Actual:   {actual_hash}"
+    )
+
+    # Also verify signature file matches
+    if HAS_SIGNATURE:
+        with open(SIGNATURE_PATH, "r") as f:
+            sig_hash = f.read().strip()
+        assert sig_hash == MODEL_EXPECTED_HASH, (
+            f"Signature file hash does not match compiled constant"
+        )
+
 
 # ═══════════════════════════════════════════════════════════════
-# TEST 5: Input Shape Correct
+#  Test 5: Model input shape is correct
 # ═══════════════════════════════════════════════════════════════
+
 def test_model_input_shape_correct():
-    """Verify model accepts (1, 3, 299, 299) input."""
+    """ShieldXception must accept (1, 3, 299, 299) input without error."""
     model = ShieldXception()
     model.eval()
-    
-    # Random input tensor
-    input_tensor = torch.randn(1, 3, 299, 299)
-    try:
-        output = model(input_tensor)
-    except RuntimeError as e:
-        pytest.fail(f"Model failed on (1, 3, 299, 299) input: {e}")
 
-# ═══════════════════════════════════════════════════════════════
-# TEST 6: Output Shape Correct
-# ═══════════════════════════════════════════════════════════════
-def test_model_output_shape_correct():
-    """Verify model outputs (1, 2) logits/probs."""
-    model = ShieldXception()
-    model.eval()
-    input_tensor = torch.randn(1, 3, 299, 299)
-    output = model(input_tensor)
-    
-    assert output.shape == (1, 2), f"Expected output (1, 2), got {output.shape}"
-    
-    # Check probabilities sum to 1 (Softmax applied in forward)
-    probs = output.detach().numpy()[0]
-    assert abs(probs.sum() - 1.0) < 1e-5, f"Output probabilities don't sum to 1: {probs.sum()}"
+    test_input = torch.randn(*MODEL_INPUT_SHAPE)
 
-# ═══════════════════════════════════════════════════════════════
-# TEST 7: Output on Reference Image
-# ═══════════════════════════════════════════════════════════════
-def test_model_output_on_reference_image():
-    """Run inference on known face image and check score consistency."""
-    # Use CPU for deterministic test
-    device = torch.device('cpu')
-    state_dict = load_model_with_verification(MODEL_PATH, device)
-    model = ShieldXception().to(device)
-    model.model.load_state_dict(state_dict, strict=False)
-    model.eval()
-    
-    # Use verified fixture
-    img_path = "tests/fixtures/frontal_face.jpg"
-    assert os.path.exists(img_path)
-    
-    # Basic transform (same as script)
-    from torchvision import transforms
-    transform = transforms.Compose([
-        transforms.Resize((299, 299)),
-        transforms.ToTensor(),
-        transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-    ])
-    
-    img = Image.open(img_path).convert('RGB')
-    input_tensor = transform(img).unsqueeze(0)
-    
     with torch.no_grad():
-        output = model(input_tensor)
-        
-    score_real = output[0, 1].item()
-    # Expect roughly consistent score (e.g. > 0.5 or < 0.5 depending on image)
-    # Just verifying it runs and produces valid float
-    assert 0.0 <= score_real <= 1.0
+        output = model(test_input)
+
+    # Model accepted the input — now check output exists and has correct dims
+    assert output is not None, "Model returned None"
+    assert output.dim() == 2, f"Expected 2D output, got {output.dim()}D"
+    assert output.shape[0] == 1, f"Expected batch=1, got {output.shape[0]}"
+
+    # Reject wrong channel count — 1 channel should fail
+    wrong_input = torch.randn(1, 1, 299, 299)
+    with pytest.raises(Exception):
+        model(wrong_input)
+
 
 # ═══════════════════════════════════════════════════════════════
-# TEST 8: Tampered Model Raises Security Error
+#  Test 6: Model output shape is correct
 # ═══════════════════════════════════════════════════════════════
+
+def test_model_output_shape_correct():
+    """Output must be (1, 2) softmax probabilities summing to ~1.0."""
+    model = ShieldXception()
+    model.eval()
+
+    test_input = torch.randn(*MODEL_INPUT_SHAPE)
+
+    with torch.no_grad():
+        output = model(test_input)
+
+    # Shape check
+    assert output.shape == torch.Size(list(MODEL_OUTPUT_SHAPE)), (
+        f"Expected output shape {MODEL_OUTPUT_SHAPE}, got {tuple(output.shape)}"
+    )
+
+    # Softmax property: sums to 1.0
+    sum_probs = output.sum().item()
+    assert abs(sum_probs - 1.0) < 1e-5, (
+        f"Output should sum to 1.0 (softmax), got {sum_probs:.6f}"
+    )
+
+    # All probabilities in [0, 1]
+    assert (output >= 0).all() and (output <= 1).all(), (
+        "Output probabilities must be in [0, 1]"
+    )
+
+    # Two outputs: [fake_prob, real_prob]
+    assert output.shape[1] == 2, (
+        f"Expected 2 output classes, got {output.shape[1]}"
+    )
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Test 7: Model output on reference (deterministic) input
+# ═══════════════════════════════════════════════════════════════
+
+@pytest.mark.skipif(not HAS_CHECKPOINT, reason="Checkpoint not available")
+def test_model_output_on_reference_image():
+    """Model output on zeros(1,3,299,299) must match recorded reference output.
+
+    This is a regression test — if the model weights change,
+    the reference output will no longer match.
+    """
+    # Load model with verified weights
+    model = ShieldXception()
+    model.eval()
+
+    state_dict = load_model_with_verification(CHECKPOINT_PATH, torch.device("cpu"))
+    model.model.load_state_dict(state_dict, strict=False)
+
+    # Deterministic reference input: all zeros
+    ref_input = torch.zeros(*MODEL_INPUT_SHAPE)
+
+    with torch.no_grad():
+        output = model(ref_input)
+
+    fake_prob = float(output[0, 0])
+    real_prob = float(output[0, 1])
+
+    # The output must be a valid softmax distribution
+    assert abs(fake_prob + real_prob - 1.0) < 1e-5, "Output must sum to 1.0"
+
+    # Check against saved reference if available
+    if os.path.exists(REF_OUTPUT_PATH):
+        with open(REF_OUTPUT_PATH, "r") as f:
+            ref = json.load(f)
+
+        ref_fake = ref["fake_prob"]
+        ref_real = ref["real_prob"]
+
+        # Allow small floating point tolerance (1e-4)
+        assert abs(fake_prob - ref_fake) < 1e-4, (
+            f"Fake prob regression: expected {ref_fake:.6f}, got {fake_prob:.6f}"
+        )
+        assert abs(real_prob - ref_real) < 1e-4, (
+            f"Real prob regression: expected {ref_real:.6f}, got {real_prob:.6f}"
+        )
+    else:
+        # No reference file yet — just verify the output is sane
+        assert 0.0 <= fake_prob <= 1.0, f"Fake prob out of range: {fake_prob}"
+        assert 0.0 <= real_prob <= 1.0, f"Real prob out of range: {real_prob}"
+
+
+# ═══════════════════════════════════════════════════════════════
+#  Test 8: Tampered model raises ModelTamperingError
+# ═══════════════════════════════════════════════════════════════
+
 def test_tampered_model_raises_security_error():
-    """Create a dummy model, sign it, tamper it, try to load."""
-    
-    # Create temp model
-    with tempfile.NamedTemporaryFile(suffix=".pth", delete=False) as tf:
-        torch.save({"state_dict": {}}, tf.name)
-        temp_model_path = tf.name
-        
-    # Calculate hash
-    sha256 = hashlib.sha256()
-    with open(temp_model_path, "rb") as f:
-        sha256.update(f.read())
-    original_hash = sha256.hexdigest()
-    
-    # Save correct signature temporarily
-    os.makedirs("models", exist_ok=True)
-    real_sig_path = "models/model_signature.sha256"
-    
-    # Backup real signature
-    with open(real_sig_path, "r") as f:
-        backup_sig = f.read()
-        
+    """A model file with a different hash must raise ModelTamperingError."""
+    # Create a tampered model file (random bytes)
+    with tempfile.NamedTemporaryFile(suffix=".pth", delete=False) as tmp:
+        tmp.write(b"TAMPERED MODEL DATA " * 100)
+        tampered_path = tmp.name
+
     try:
-        # Write temporary signature
-        with open(real_sig_path, "w") as f:
-            f.write(original_hash)
-            
-        # Tamper with file (append a byte)
-        with open(temp_model_path, "ab") as f:
-            f.write(b'\0')
-            
-        # Try to load -> Should raise SecurityError
-        from shield_xception import SecurityError
-        
-        with pytest.raises(SecurityError, match="INTEGRITY VIOLATION"):
-            device = torch.device('cpu')
-            load_model_with_verification(temp_model_path, device)
-            
+        # The signature file stores the real hash; loading the tampered file
+        # should detect the mismatch
+        with pytest.raises(ModelTamperingError) as exc_info:
+            load_model_with_verification(tampered_path, skip_hash=False)
+
+        # Verify error message contains useful info
+        error_msg = str(exc_info.value)
+        assert "INTEGRITY VIOLATION" in error_msg
+        assert "Expected:" in error_msg
+        assert "Got:" in error_msg
     finally:
-        # Restore real signature
-        with open(real_sig_path, "w") as f:
-            f.write(backup_sig)
-        if os.path.exists(temp_model_path):
-            os.remove(temp_model_path)
+        os.unlink(tampered_path)
+
 
 # ═══════════════════════════════════════════════════════════════
-# TEST 9: Adversarial FGSM Accuracy (Functional Test)
+#  BONUS: Test _keys_are_equivalent covers all cases
 # ═══════════════════════════════════════════════════════════════
-def test_adversarial_fgsm_accuracy_within_tolerance():
-    """Verify FGSM attack suite runs and produces results."""
-    results = run_adversarial_robustness(
-        MODEL_PATH, 
-        "tests/fixtures/frontal_face.jpg",
-        output_dir="data/adversarial_test_set/"
-    )
-    
-    assert "attacks" in results
-    assert "fgsm_eps_0.03" in results["attacks"]
-    
-    # Robustness check: fail if accuracy drops > 90% (extreme fragility)
-    # But for standard models, drop is often large. We mainly verify the test runs.
-    # Assert drop is calculated
-    drop = results["attacks"]["fgsm_eps_0.03"]["drop"]
-    assert isinstance(drop, float)
-    
-    # Check adversarial images created
-    assert os.path.exists("data/adversarial_test_set/fgsm_eps_0.03.jpg")
 
-# ═══════════════════════════════════════════════════════════════
-# TEST 10: Adversarial PGD Accuracy (Functional Test)
-# ═══════════════════════════════════════════════════════════════
-def test_adversarial_pgd_accuracy_within_tolerance():
-    """Verify PGD attack suite runs and produces results."""
-    # We can reuse results from previous run or run again?
-    # Running again is safer for independence.
-    results = run_adversarial_robustness(
-        MODEL_PATH, 
-        "tests/fixtures/frontal_face.jpg",
-        output_dir="data/adversarial_test_set/"
-    )
-    
-    assert "pgd_eps_0.03" in results["attacks"]
-    drop = results["attacks"]["pgd_eps_0.03"]["drop"]
-    assert isinstance(drop, float)
-    assert os.path.exists("data/adversarial_test_set/pgd_eps_0.03.jpg")
+def test_key_equivalence_logic():
+    """Verify the key mapping handles all prefix patterns and FC rename."""
+    # Direct match
+    assert _keys_are_equivalent("conv1.weight", "conv1.weight")
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+    # Prefix stripping
+    assert _keys_are_equivalent("model.conv1.weight", "conv1.weight")
+    assert _keys_are_equivalent("module.conv1.weight", "conv1.weight")
+    assert _keys_are_equivalent("net.conv1.weight", "conv1.weight")
+
+    # FC head renaming
+    assert _keys_are_equivalent("model.last_linear.1.weight", "fc.weight")
+    assert _keys_are_equivalent("model.last_linear.1.bias", "fc.bias")
+
+    # Non-matches
+    assert not _keys_are_equivalent("conv1.weight", "conv2.weight")
+    assert not _keys_are_equivalent("model.conv1.weight", "conv2.weight")
+    assert not _keys_are_equivalent("random_key", "conv1.weight")

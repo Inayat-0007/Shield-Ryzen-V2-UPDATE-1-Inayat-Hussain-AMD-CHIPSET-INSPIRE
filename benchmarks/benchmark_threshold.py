@@ -3,7 +3,11 @@ import sys
 import os
 import json
 import numpy as np
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 def find_optimal_thresholds(y_true, y_scores):
     """

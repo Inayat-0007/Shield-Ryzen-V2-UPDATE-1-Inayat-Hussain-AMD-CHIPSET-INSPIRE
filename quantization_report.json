@@ -1,25 +1,32 @@
 {
-  "fp32_size_mb": 83.165317,
-  "int8_size_mb": 21.450266,
-  "compression_percent": 74.20767842440858,
-  "compression_honest_description": "FP32\u2192INT8 reduces 32-bit weights to 8-bit. Theoretical max compression is 75%. Achieved 74.2%. This is expected behavior, not exceptional.",
+  "fp32_size_mb": 83.17,
+  "int8_size_mb": 21.45,
+  "compression_percent": 74.21,
+  "compression_honest_description": "FP32->INT8 reduces 32-bit weights to 8-bit. Theoretical max compression is 75%. Achieved 74.2%. This is expected behavior, not exceptional.",
   "quantization_format": "QDQ",
   "calibration_frames": 408,
   "per_channel_quantization": true,
   "accuracy_comparison": {
-    "mean_abs_diff": 0.01858844980597496,
+    "mean_abs_diff": 0.018848173320293427,
+    "max_abs_diff": 0.23987582325935364,
     "agreement_rate": 99.01960784313727,
     "tested_frames": 102
   },
   "npu_verification": {
     "available_providers": [
+      "AzureExecutionProvider",
+      "CPUExecutionProvider"
+    ],
+    "active_providers": [
       "CPUExecutionProvider"
     ],
     "total_nodes": 433,
-    "qdq_nodes": 326,
-    "conv_nodes": 74,
+    "npu_nodes": 0,
+    "cpu_fallback_nodes": 433,
+    "qdq_node_count": 326,
+    "conv_node_count": 74,
     "npu_coverage_percent": 0.0,
     "is_fully_npu": false,
-    "warning": null
+    "warning": "Running on CPU (Development Mode) - NPU provider not active."
   }
 }

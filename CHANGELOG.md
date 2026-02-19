@@ -1,6 +1,21 @@
 
 # Shield-Ryzen V2 Changelog
 
+## V2.1.0 (Unified Release - NPU Optimized)
+### New Features
+*   **Ryzen AI Engine**: `v3_xdna_engine.py` with Vitis AI Execution Provider priority.
+*   **Shield HUD**: Complete WCAG 2.1 AA compliant overlay (`shield_hud.py`).
+*   **Enterprise Security**: `plugins/arcface_reid.py` + `security/audit_trail.py` (SHA-256 Chained Logs).
+*   **Hardware Monitor**: `shield_hardware_monitor.py` tracking CPU/RAM/FPS/Power.
+*   **Validation Suite**: `validate_system.py` + `benchmarks/` + `edge_case_test_suite.py`.
+
+### Improvements
+*   **Launcher**: Unified `shield.py` (`start.bat`) for easy execution.
+*   **Documentation**: Verified Claims vs Evidence, updated Architecture.
+*   **Quantization**: `quantize_ryzen.py` for INT8 QDQ export.
+
+---
+
 ## V2.0.0 (Shield-Ryzen V2)
 ### Major Architecture
 *   **Modular Architecture**: Replaced the monolithic `shield_xception.py` with specific modules:

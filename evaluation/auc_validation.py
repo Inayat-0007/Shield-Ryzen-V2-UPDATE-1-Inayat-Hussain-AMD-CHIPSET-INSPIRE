@@ -4,6 +4,17 @@ Shield-Ryzen V2 — AUC Validation
 Loads ONNX model, runs inference on available face-forensic datasets,
 and outputs per-dataset AUC with 95% confidence intervals and EER.
 
+NORMALIZATION: Uses the SAME preprocessing as shield_face_pipeline.py
+(single source of truth) to ensure evaluation matches inference:
+    normalized = (pixel_uint8 / 255.0 - 0.5) / 0.5
+    Range: [-1.0, +1.0] (FF++ standard, OPTION B)
+
+Supported datasets:
+    - FaceForensics++ c23 (test split)
+    - Celeb-DF v2
+    - DFDC preview set
+    - Any directory with real/ and fake/ subdirectories
+
 Usage:
     python evaluation/auc_validation.py \\
         --model shield_ryzen_int8.onnx \\
@@ -11,7 +22,7 @@ Usage:
         --output evaluation/auc_results.json
 
 Developer: Inayat Hussain | AMD Slingshot 2026
-Part 1 of 12 — Measurement Infrastructure
+Part 2 of 14 — Face Detection, Preprocessing & Normalization Fix
 """
 
 from __future__ import annotations
@@ -38,15 +49,30 @@ except ImportError:
     ort = None  # type: ignore[assignment]
 
 
-# ─── Preprocessing (matches shield_utils.py) ─────────────────
+# ─── Preprocessing (SINGLE SOURCE OF TRUTH) ──────────────────
+# Import from shield_face_pipeline to guarantee evaluation uses
+# the same normalization as the live inference engine.
 
+try:
+    from shield_face_pipeline import ShieldFacePipeline
+    _pipeline_available = True
+except ImportError:
+    _pipeline_available = False
+
+# Constants documented here for traceability (must match pipeline)
 MEAN = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 STD = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 INPUT_SIZE = 299
 
 
 def preprocess_face(face_bgr: np.ndarray) -> np.ndarray:
-    """Preprocess face crop: resize 299×299, normalize to [-1, 1], NCHW."""
+    """Preprocess face crop: resize 299×299, normalize to [-1, 1], NCHW.
+
+    Uses the identical formula as shield_face_pipeline.align_and_crop:
+        face_float = face_rgb.astype(np.float32) / 255.0
+        face_norm  = (face_float - 0.5) / 0.5
+    Range: [-1.0, +1.0]
+    """
     face_rgb = cv2.cvtColor(face_bgr, cv2.COLOR_BGR2RGB)
     face_resized = cv2.resize(face_rgb, (INPUT_SIZE, INPUT_SIZE))
     face_float = face_resized.astype(np.float32) / 255.0

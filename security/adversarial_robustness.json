@@ -1,0 +1,62 @@
+{
+  "test_timestamp": "2026-02-19T11:42:40Z",
+  "model_path": "ffpp_c23.pth",
+  "image_source": "tests/fixtures/frontal_face.jpg",
+  "device": "cpu",
+  "baseline": {
+    "real_confidence": 0.662203,
+    "fake_confidence": 0.337797,
+    "prediction": "REAL"
+  },
+  "fgsm_attacks": {
+    "fgsm_eps_1_255": {
+      "epsilon": 0.00392156862745098,
+      "epsilon_label": "1/255",
+      "clean_confidence": 0.662203,
+      "adversarial_confidence": 0.00101,
+      "confidence_drop": 0.661193,
+      "still_correct": false
+    },
+    "fgsm_eps_2_255": {
+      "epsilon": 0.00784313725490196,
+      "epsilon_label": "2/255",
+      "clean_confidence": 0.662203,
+      "adversarial_confidence": 0.71808,
+      "confidence_drop": -0.055878,
+      "still_correct": true
+    },
+    "fgsm_eps_4_255": {
+      "epsilon": 0.01568627450980392,
+      "epsilon_label": "4/255",
+      "clean_confidence": 0.662203,
+      "adversarial_confidence": 0.99638,
+      "confidence_drop": -0.334177,
+      "still_correct": true
+    },
+    "fgsm_eps_8_255": {
+      "epsilon": 0.03137254901960784,
+      "epsilon_label": "8/255",
+      "clean_confidence": 0.662203,
+      "adversarial_confidence": 0.998963,
+      "confidence_drop": -0.33676,
+      "still_correct": true
+    }
+  },
+  "pgd_attack": {
+    "epsilon": 0.01568627450980392,
+    "epsilon_label": "4/255",
+    "num_steps": 20,
+    "alpha": 0.00784313725490196,
+    "clean_confidence": 0.662203,
+    "adversarial_confidence": 0.0,
+    "confidence_drop": 0.662203,
+    "still_correct": false
+  },
+  "assessment": {
+    "target": "FGSM \u03b5=4/255 accuracy drop < 5%",
+    "actual_drop_pct": 33.42,
+    "target_met": false,
+    "note": "Non-adversarially trained models are expected to be vulnerable to gradient attacks. System-level defenses (liveness, texture, temporal consistency) provide layered security."
+  },
+  "adversarial_images_dir": "data/adversarial_test_set/"
+}

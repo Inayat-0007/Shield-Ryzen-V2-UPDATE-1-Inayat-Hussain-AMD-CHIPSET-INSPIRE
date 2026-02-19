@@ -40,7 +40,8 @@ from shield_utils_core import (
     preprocess_face,
     BlinkTracker,
     DecisionStateMachine,
-    estimate_distance
+    estimate_distance,
+    SignalSmoother,
 )
 
 # Master Protocol: BlinkTracker and DecisionStateMachine are now imported from shield_utils_core.py
@@ -75,17 +76,22 @@ def create_optimized_session(model_path: str, device: str = "auto"):
                                    providers=providers)
 
     # Warmup — first inference allocates memory
-    if session.get_inputs():
-        input_meta = session.get_inputs()[0]
-        # Handle dynamic axes safely
-        shape_def = input_meta.shape
-        safe_shape = [d if (isinstance(d, int) and d > 0) else 1 for d in shape_def]
-            
-        dummy = np.random.randn(*safe_shape).astype(np.float32)
-        try:
-            session.run(None, {input_meta.name: dummy})
-        except Exception as e:
-            print(f"Warmup warning: {e}")
+    try:
+        if session.get_inputs():
+            input_meta = session.get_inputs()[0]
+            # Handle dynamic axes safely
+            shape_def = input_meta.shape
+            safe_shape = [int(d) if (isinstance(d, int) and d > 0) else 1 for d in shape_def]
+            if not safe_shape or not all(isinstance(s, int) for s in safe_shape):
+                safe_shape = [1, 3, 299, 299]  # Xception default
+                
+            dummy = np.random.randn(*safe_shape).astype(np.float32)
+            try:
+                session.run(None, {input_meta.name: dummy})
+            except Exception as e:
+                print(f"Warmup warning: {e}")
+    except Exception:
+        pass  # Skip warmup if session internals are mocked/unavailable
 
     return session
 
@@ -307,18 +313,33 @@ class ShieldEngine:
         t_capture = time.monotonic() - t_start
         
         if not ok:
-             result = EngineResult(None, "CAMERA_ERROR", [], 0.0, {"capture_ms": t_capture*1000}, self.camera.get_health_status())
-             # Render HUD on blank frame?
-             # For now return result, allowing UI loop to handle blank or HUD render manually if needed.
-             # But if we want consistent timing breakdown, we can't render on None.
+             # CAMERA_ERROR: Create visible error frame instead of None
+             # Security Rule: State must be UNKNOWN, never "VERIFIED" or "FAKE"
+             error_frame = np.zeros((720, 1280, 3), dtype=np.uint8)
+             cv2.putText(error_frame, "CAMERA ERROR", (350, 340),
+                         cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 0, 255), 3)
+             cv2.putText(error_frame, "Check camera connection", (380, 400),
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (128, 128, 128), 1)
+             result = EngineResult(error_frame, "CAMERA_ERROR", [], 0.0,
+                                   {"capture_ms": t_capture*1000},
+                                   self.camera.get_health_status())
+             logging.getLogger("ShieldEngine").warning(
+                 "Camera read failed — state locked to CAMERA_ERROR")
              return result
         
         if not self.camera.check_frame_freshness(ts):
-             result = EngineResult(frame, "STALE_FRAME", [], 0.0, {"capture_ms": t_capture*1000}, self.camera.get_health_status())
-             # Should we render STALE HUD? Yes.
+             # STALE_FRAME: Display warning but do NOT show previous verdict
+             result = EngineResult(frame, "UNKNOWN", [], 0.0,
+                                   {"capture_ms": t_capture*1000},
+                                   self.camera.get_health_status())
+             # Overlay stale warning before HUD render
+             cv2.putText(frame, "STALE FRAME - VERIFY CAMERA", (20, 40),
+                         cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 165, 255), 2)
              annotated, t_hud = self.hud.render(frame, result)
              result.frame = annotated
              result.timing_breakdown["hud_ms"] = t_hud * 1000
+             logging.getLogger("ShieldEngine").warning(
+                 "Stale frame detected — state locked to UNKNOWN, previous verdict suppressed")
              return result
 
         # STAGE 2: Detection
@@ -327,8 +348,11 @@ class ShieldEngine:
         t_detect = time.monotonic() - t2
         
         if not faces:
-            # Fall through to standard path, Analysis loop won't run.
-            pass
+            # NO FACE DETECTED: Overlay message, state = "UNKNOWN"
+            cv2.putText(frame, "NO FACE DETECTED", (20, 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 165, 255), 2)
+            cv2.putText(frame, "Position your face in front of the camera", (20, 75),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
 
         # STAGE 3: Analysis
         t3 = time.monotonic()
@@ -449,11 +473,11 @@ class ShieldEngine:
             dist_cm = estimate_distance(f_w, img_w, face.transformation_matrix)
             
             face_alert = ""
-            if face.occlusion_score > 0.50: face_alert = "DETECTION BLOCKED"
+            if face.occlusion_score > 0.50: face_alert = "FACE PARTIALLY BLOCKED"
             elif dist_cm > 150: face_alert = "TOO FAR"
             elif dist_cm < 20: face_alert = "TOO CLOSE"
             elif not face.is_frontal and state not in ("REAL", "VERIFIED"):
-                face_alert = "POSE UNSTABLE"
+                face_alert = "PLEASE FACE CAMERA"
 
             # 3f. Compile Results
             face_results.append(FaceResult(

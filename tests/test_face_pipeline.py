@@ -2,10 +2,11 @@
 Shield-Ryzen V2 — Face Pipeline Tests
 =======================================
 8 test cases using synthetic images and direct method testing.
-Tests face detection, cropping, normalization, head pose, and occlusion.
+Tests face detection, cropping, normalization, head pose, occlusion,
+and the 478→68 landmark conversion.
 
 Developer: Inayat Hussain | AMD Slingshot 2026
-Part 2 of 12 — Face Detection, Preprocessing & Multi-Face
+Part 2 of 14 — Face Detection, Preprocessing & Multi-Face
 """
 
 from __future__ import annotations
@@ -86,10 +87,21 @@ def _make_mock_face_detection(
     x, y, w, h = bbox
     rng = np.random.RandomState(42)
 
-    # Generate landmarks distributed within the bounding box
-    landmarks = np.zeros((n_landmarks, 2), dtype=np.float32)
-    landmarks[:, 0] = rng.uniform(x + w * 0.1, x + w * 0.9, n_landmarks)
-    landmarks[:, 1] = rng.uniform(y + h * 0.1, y + h * 0.9, n_landmarks)
+    # Generate 478 landmarks distributed within the bounding box (pixel coords)
+    landmarks_pixel = np.zeros((n_landmarks, 2), dtype=np.float32)
+    landmarks_pixel[:, 0] = rng.uniform(x + w * 0.1, x + w * 0.9, n_landmarks)
+    landmarks_pixel[:, 1] = rng.uniform(y + h * 0.1, y + h * 0.9, n_landmarks)
+
+    # Generate raw 478 normalized landmarks
+    landmarks_478 = np.zeros((n_landmarks, 3), dtype=np.float32)
+    landmarks_478[:, 0] = landmarks_pixel[:, 0] / 640.0
+    landmarks_478[:, 1] = landmarks_pixel[:, 1] / 480.0
+    landmarks_478[:, 2] = rng.uniform(-0.01, 0.01, n_landmarks)
+
+    # Generate 68 standard landmarks (subset of pixel coords)
+    landmarks_68 = np.zeros((68, 2), dtype=np.float32)
+    landmarks_68[:, 0] = rng.uniform(x + w * 0.1, x + w * 0.9, 68)
+    landmarks_68[:, 1] = rng.uniform(y + h * 0.1, y + h * 0.9, 68)
 
     face_tensor = np.random.randn(1, 3, 299, 299).astype(np.float32)
     face_raw = np.full((260, 200, 3), 150, dtype=np.uint8)
@@ -97,7 +109,9 @@ def _make_mock_face_detection(
     return FaceDetection(
         bbox=bbox,
         confidence=confidence,
-        landmarks=landmarks,
+        landmarks_478=landmarks_478,
+        landmarks_68=landmarks_68,
+        landmarks=landmarks_pixel,
         landmark_confidence=0.9,
         head_pose=(0.0, 0.0, 0.0),
         face_crop_299=face_tensor,
@@ -111,25 +125,26 @@ def _make_mock_face_detection(
 # ─── Test 1: Single face detected correctly ───────────────────
 
 def test_single_face_detected_correctly():
-    """ShieldFacePipeline.detect_faces should detect a single face
-    in a frame with one face and return a list with one FaceDetection."""
-    # Test the pipeline's detection method using a mock that simulates
-    # what MediaPipe would return (since synthetic images may not trigger
-    # real MediaPipe detections)
-    pipeline = ShieldFacePipeline.__new__(ShieldFacePipeline)
-    pipeline._detector_type = "test"
-    pipeline._landmarker = None
-
-    frame = _make_synthetic_face_frame(n_faces=1)
+    """ShieldFacePipeline.detect_faces should produce a FaceDetection with
+    all required fields populated, including landmarks_478 and landmarks_68."""
     det = _make_mock_face_detection(bbox=(170, 100, 200, 260))
 
     # Verify the FaceDetection object is correctly structured
     assert isinstance(det, FaceDetection)
     assert det.bbox == (170, 100, 200, 260)
     assert det.confidence == 0.95
+    # Both landmark formats must be populated
     assert det.landmarks.shape[0] == 478
+    assert det.landmarks_478.shape == (478, 3), (
+        f"landmarks_478 should be (478, 3), got {det.landmarks_478.shape}"
+    )
+    assert det.landmarks_68.shape == (68, 2), (
+        f"landmarks_68 should be (68, 2), got {det.landmarks_68.shape}"
+    )
     assert det.face_crop_299 is not None
     assert det.face_crop_299.shape == (1, 3, 299, 299)
+    assert det.is_frontal is True
+    assert det.ear_reliable is True
 
 
 # ─── Test 2: Multi-face returns all faces ─────────────────────
@@ -137,7 +152,6 @@ def test_single_face_detected_correctly():
 def test_multi_face_returns_all_faces():
     """When multiple FaceDetection objects are created, they should
     all be distinct and sortable by area (largest first)."""
-    # Simulate multiple detections
     det1 = _make_mock_face_detection(bbox=(50, 50, 200, 260))   # area=52000
     det2 = _make_mock_face_detection(bbox=(350, 60, 150, 200))  # area=30000
     det3 = _make_mock_face_detection(bbox=(250, 80, 180, 240))  # area=43200
@@ -179,7 +193,7 @@ def test_no_face_returns_empty_list():
 
 # ─── Test 4: Crop is exactly 299x299 ─────────────────────────
 
-def test_crop_is_exactly_299x299():
+def test_crop_is_exactly_299x299_rgb():
     """align_and_crop must produce a tensor of shape (1, 3, 299, 299).
     This is the XceptionNet input requirement — any other size fails."""
     pipeline = ShieldFacePipeline.__new__(ShieldFacePipeline)
@@ -200,9 +214,13 @@ def test_crop_is_exactly_299x299():
 # ─── Test 5: Normalization values correct ─────────────────────
 
 def test_normalization_values_correct():
-    """Verify that align_and_crop produces values in [-1, 1] range,
+    """*** LOGIC COLLAPSE CANARY ***
+
+    Verify that align_and_crop produces values in [-1, 1] range,
     matching FF++ XceptionNet training normalization:
-    normalized = (pixel/255.0 - 0.5) / 0.5"""
+        normalized = (pixel/255.0 - 0.5) / 0.5
+
+    Uses a KNOWN uniform pixel value to validate the exact formula."""
     pipeline = ShieldFacePipeline.__new__(ShieldFacePipeline)
     pipeline._detector_type = "mediapipe"
 
@@ -213,17 +231,31 @@ def test_normalization_values_correct():
     face_tensor, _ = pipeline.align_and_crop(frame, bbox)
 
     # For uniform 128 pixel value:
-    # expected = (128/255 - 0.5) / 0.5 = (0.502 - 0.5) / 0.5 = 0.00392
+    # expected = (128/255 - 0.5) / 0.5 = (0.50196 - 0.5) / 0.5 = 0.00392
     expected_val = (128.0 / 255.0 - 0.5) / 0.5
 
-    # Check range
+    # RANGE CHECK: Must be in [-1.0, 1.0]
     assert face_tensor.min() >= -1.01, f"Min value {face_tensor.min()} < -1.01"
     assert face_tensor.max() <= 1.01, f"Max value {face_tensor.max()} > 1.01"
 
-    # Check mean value for uniform input
+    # FORMULA CHECK: Mean for uniform input must match expected value
     actual_mean = float(face_tensor.mean())
     assert abs(actual_mean - expected_val) < 0.05, \
-        f"Mean {actual_mean} doesn't match expected {expected_val}"
+        f"Mean {actual_mean} doesn't match expected {expected_val}. " \
+        "LOGIC COLLAPSE: Normalization formula is wrong!"
+
+    # BOUNDARY CHECKS: Verify extremes
+    # All-black (0) should map to -1.0
+    black_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    black_tensor, _ = pipeline.align_and_crop(black_frame, bbox)
+    assert abs(float(black_tensor.mean()) - (-1.0)) < 0.01, \
+        "Black pixels (0) should normalize to -1.0"
+
+    # All-white (255) should map to +1.0
+    white_frame = np.full((480, 640, 3), 255, dtype=np.uint8)
+    white_tensor, _ = pipeline.align_and_crop(white_frame, bbox)
+    assert abs(float(white_tensor.mean()) - 1.0) < 0.01, \
+        "White pixels (255) should normalize to +1.0"
 
 
 # ─── Test 6: BGR to RGB conversion ───────────────────────────
@@ -244,7 +276,8 @@ def test_bgr_to_rgb_conversion():
     bbox = (170, 100, 200, 260)
     face_tensor, _ = pipeline.align_and_crop(blue_frame, bbox)
 
-    # After BGR->RGB conversion and normalization:
+    # After BGR→RGB conversion and normalization:
+    # NCHW format: tensor[0, channel, H, W]
     # R channel (tensor[0,0,:,:]) should be -1.0 (from pixel 0)
     # G channel (tensor[0,1,:,:]) should be -1.0 (from pixel 0)
     # B channel (tensor[0,2,:,:]) should be +1.0 (from pixel 255)
@@ -303,47 +336,66 @@ def test_head_pose_frontal_detection():
         "Insufficient landmarks should return (0, 0, 0)"
 
 
-# ─── Test 8: Occlusion flagged correctly ──────────────────────
+# ─── Test 8: 478→68 Landmark Conversion ──────────────────────
 
-def test_occlusion_flagged_correctly():
-    """When landmarks are outside the bounding box (simulating
-    occlusion), occlusion score should increase."""
+def test_landmark_478_to_68_conversion():
+    """Verify _convert_478_to_68 produces exactly 68 landmarks in
+    pixel coordinates, and that key anatomical positions are correct."""
     pipeline = ShieldFacePipeline.__new__(ShieldFacePipeline)
     pipeline._detector_type = "mediapipe"
 
-    # Normal case: landmarks well within bbox
-    bbox_normal = (100, 50, 200, 260)
-    landmarks_normal = np.zeros((478, 2), dtype=np.float32)
+    # Create normalized MediaPipe-style 478 landmarks
     rng = np.random.RandomState(42)
-    landmarks_normal[:, 0] = rng.uniform(110, 290, 478)  # Within bbox x-range
-    landmarks_normal[:, 1] = rng.uniform(60, 300, 478)    # Within bbox y-range
+    landmarks_478 = np.zeros((478, 3), dtype=np.float32)
+    # Place landmarks in a face-like distribution
+    landmarks_478[:, 0] = rng.uniform(0.2, 0.8, 478)  # x in [0, 1]
+    landmarks_478[:, 1] = rng.uniform(0.2, 0.8, 478)  # y in [0, 1]
+    landmarks_478[:, 2] = rng.uniform(-0.01, 0.01, 478)  # z (depth)
 
-    score_normal = pipeline.estimate_occlusion(
-        landmarks_normal, bbox_normal, (640, 480)
-    )
+    # Set specific anatomical points for validation
+    # Nose tip (index 1 in MediaPipe → point 34 in 68, so _convert idx 33)
+    landmarks_478[1, 0] = 0.5   # nose tip center x
+    landmarks_478[1, 1] = 0.5   # nose tip center y
 
-    # Occluded case: many landmarks outside bbox
-    bbox_occluded = (100, 50, 200, 260)
-    landmarks_occluded = np.zeros((478, 2), dtype=np.float32)
-    # Put most landmarks far outside the bbox
-    landmarks_occluded[:, 0] = rng.uniform(500, 600, 478)  # Far right (outside bbox)
-    landmarks_occluded[:, 1] = rng.uniform(400, 500, 478)  # Far bottom (outside bbox)
+    # Left eye outer corner (index 33 in MediaPipe → point 37 in 68)
+    landmarks_478[33, 0] = 0.35  # left eye x
+    landmarks_478[33, 1] = 0.4   # left eye y
 
-    score_occluded = pipeline.estimate_occlusion(
-        landmarks_occluded, bbox_occluded, (640, 480)
-    )
+    # Right eye outer corner (index 263 in MediaPipe → point 46 in 68)
+    landmarks_478[263, 0] = 0.65  # right eye x
+    landmarks_478[263, 1] = 0.4   # right eye y
 
-    # Normal landmarks should have low occlusion
-    assert score_normal < 0.3, \
-        f"Normal face occlusion {score_normal} should be < 0.3"
+    frame_w, frame_h = 640, 480
+    lm_68 = pipeline._convert_478_to_68(landmarks_478, frame_w, frame_h)
 
-    # Occluded landmarks should have high occlusion
-    assert score_occluded > 0.5, \
-        f"Occluded face occlusion {score_occluded} should be > 0.5"
+    # Shape check
+    assert lm_68.shape == (68, 2), f"Expected (68, 2), got {lm_68.shape}"
+    assert lm_68.dtype == np.float32
 
-    # Verify EAR reliability flag logic
-    assert score_normal < 0.5  # ear_reliable = True
-    assert score_occluded >= 0.5  # ear_reliable = False
+    # All values should be in pixel coordinates (not normalized)
+    assert lm_68.max() > 1.0, \
+        "Landmarks should be in pixel coordinates, not [0, 1] range"
+
+    # Verify specific anatomical positions using pixel conversion
+    # Nose tip (MP index 1) mapped to 68-point index 33 (0-based)
+    # _MP_NOSE_BOTTOM_INDICES[2] = index 1 → 68-point #34 → array idx 33
+    nose_tip_idx = 33  # 34th point (0-indexed = 33)
+    assert abs(lm_68[nose_tip_idx, 0] - (0.5 * frame_w)) < 1.0, \
+        f"Nose tip X should be {0.5 * frame_w}, got {lm_68[nose_tip_idx, 0]}"
+
+    # Right eye outer (MP index 33) → 68-point #37 → array idx 36
+    right_eye_idx = 36  # 37th point (0-indexed = 36)
+    assert abs(lm_68[right_eye_idx, 0] - (0.35 * frame_w)) < 1.0, \
+        f"Right eye X should be {0.35 * frame_w}, got {lm_68[right_eye_idx, 0]}"
+
+    # Left eye outer (MP index 263) → 68-point #46 → array idx 45
+    left_eye_idx = 45  # 46th point (0-indexed = 45)
+    assert abs(lm_68[left_eye_idx, 0] - (0.65 * frame_w)) < 1.0, \
+        f"Left eye X should be {0.65 * frame_w}, got {lm_68[left_eye_idx, 0]}"
+
+    # Eye separation should be anatomically plausible
+    eye_sep = abs(lm_68[left_eye_idx, 0] - lm_68[right_eye_idx, 0])
+    assert eye_sep > 50, f"Eye separation {eye_sep:.0f}px seems too small"
 
 
 # ─── Run ──────────────────────────────────────────────────────

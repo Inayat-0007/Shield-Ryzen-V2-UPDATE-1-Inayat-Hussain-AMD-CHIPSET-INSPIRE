@@ -12,14 +12,15 @@ Verifies:
   5. Consistency across multiple images
 
 Usage:
-    python scripts/verify_normalization.py
+    python scripts/verify_normalization.py [--live]
 
 Developer: Inayat Hussain | AMD Slingshot 2026
-Part 1 of 12 — Input Pipeline Hardening
+Part 1 of 14 — Input Pipeline Hardening
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import sys
@@ -33,7 +34,13 @@ _project_root = str(Path(__file__).resolve().parent.parent)
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from shield_utils import preprocess_face, MEAN, STD, INPUT_SIZE
+# Import from shield_utils_core directly (shield_utils package re-exports these)
+from shield_utils_core import preprocess_face
+
+# Constants from shield_utils_core (FF++ standard)
+INPUT_SIZE = 299
+MEAN = np.array([0.5, 0.5, 0.5], dtype=np.float32)
+STD = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 
 
 def _create_test_images() -> list[tuple[str, np.ndarray]]:
@@ -44,17 +51,15 @@ def _create_test_images() -> list[tuple[str, np.ndarray]]:
     gray = np.full((480, 640, 3), 128, dtype=np.uint8)
     test_images.append(("uniform_gray_128", gray))
 
-    # 2. All-black (0, 0, 0)
-    black = np.zeros((480, 640, 3), dtype=np.uint8)
-    # Add small brightness to pass camera validation
-    black[:, :] = 10
+    # 2. Near-black (avoids camera validation rejection at 0)
+    black = np.full((480, 640, 3), 10, dtype=np.uint8)
     test_images.append(("near_black", black))
 
-    # 3. All-white (255, 255, 255)
+    # 3. Near-white (avoids camera validation rejection at 255)
     white = np.full((480, 640, 3), 245, dtype=np.uint8)
     test_images.append(("near_white", white))
 
-    # 4. Gradient image (pixel values 0-255 across width)
+    # 4. Gradient image (pixel values 10-240 across width)
     gradient = np.zeros((480, 640, 3), dtype=np.uint8)
     for c in range(3):
         gradient[:, :, c] = np.tile(np.linspace(10, 240, 640, dtype=np.uint8), (480, 1))
@@ -77,8 +82,33 @@ def _create_test_images() -> list[tuple[str, np.ndarray]]:
     return test_images
 
 
-def verify_normalization() -> dict:
+def _get_live_frame() -> np.ndarray | None:
+    """Capture a single live frame from the webcam."""
+    try:
+        from shield_camera import ShieldCamera
+        cam = ShieldCamera(camera_id=0)
+        frame = None
+        for _ in range(10):  # Flush buffer
+            ok, f, _ = cam.read_validated_frame()
+            if ok:
+                frame = f
+        cam.release()
+        return frame
+    except Exception as e:
+        print(f"  ⚠️  Could not capture live frame: {e}")
+        return None
+
+
+def verify_normalization(use_live: bool = False) -> dict:
     """Run comprehensive normalization verification.
+
+    Checks BOTH possible normalization schemes:
+      OPTION A (ImageNet):  mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]
+                            Expected range ≈ [-2.12, 2.64]
+      OPTION B (FF++ [-1,1]): (pixel/255 - 0.5) / 0.5
+                            Expected range = [-1.0, 1.0]
+
+    Prints CLEAR verdict on match/mismatch.
 
     Returns dict with verification results and pass/fail status.
     """
@@ -99,6 +129,15 @@ def verify_normalization() -> dict:
     }
 
     test_images = _create_test_images()
+
+    # Add live frame if requested
+    if use_live:
+        live = _get_live_frame()
+        if live is not None:
+            test_images.append(("live_webcam", live))
+        else:
+            print("  ⚠️  Live frame unavailable, continuing with synthetic only")
+
     all_passed = True
 
     for name, img in test_images:
@@ -127,9 +166,7 @@ def verify_normalization() -> dict:
             }
             print(f"    Dtype: {tensor.dtype} — {'✅' if dtype_ok else '❌'}")
 
-            # Check 3: Output range [-1, 1]
-            # WHY: FF++ XceptionNet was trained with pixel values in [-1, 1]
-            # using (x - 0.5) / 0.5 normalization
+            # Check 3: Output range [-1, 1] (FF++ standard)
             t_min = float(tensor.min())
             t_max = float(tensor.max())
             range_ok = t_min >= -1.01 and t_max <= 1.01  # small tolerance for float
@@ -140,8 +177,17 @@ def verify_normalization() -> dict:
             }
             print(f"    Range: [{t_min:.4f}, {t_max:.4f}] — {'✅' if range_ok else '❌'}")
 
+            if not range_ok:
+                # Determine what normalization IS being used
+                if t_min >= 0 and t_max <= 1.01:
+                    print("    ⚠️  Values in [0, 1] — normalization divides by 255 but doesn't center")
+                elif t_min >= -3 and t_max <= 3:
+                    print("    ⚠️  Values in [-3, 3] — looks like ImageNet normalization")
+                elif t_min >= 0 and t_max > 1.5:
+                    print("    ❌ MISMATCH: Expected range [-1,1] but got [{:.2f}, {:.2f}]".format(t_min, t_max))
+                    print("       THIS IS WHY YOUR MODEL OUTPUTS GARBAGE.")
+
             # Check 4: Verify normalization formula correctness
-            # For uniform gray 128: expected = (128/255 - 0.5) / 0.5 ≈ 0.00392
             if name == "uniform_gray_128":
                 expected_val = (128.0 / 255.0 - 0.5) / 0.5
                 actual_mean = float(tensor.mean())
@@ -187,12 +233,19 @@ def verify_normalization() -> dict:
 
     results["all_passed"] = all_passed
 
-    # Summary
+    # ── Summary with clear verdict ────────────────────────────
     print("\n" + "=" * 60)
     n_pass = sum(1 for t in results["tests"] if t["passed"])
     n_total = len(results["tests"])
     status = "✅ ALL PASSED" if all_passed else "❌ FAILURES DETECTED"
     print(f"  RESULT: {status} ({n_pass}/{n_total} tests)")
+
+    if all_passed:
+        print("  MATCH: Preprocessing matches FF++ [-1,1] normalization")
+    else:
+        print("  MISMATCH: Preprocessing does NOT match expected normalization!")
+        print("  Review the flags above to identify the exact issue.")
+
     print("=" * 60)
 
     # Save
@@ -206,4 +259,7 @@ def verify_normalization() -> dict:
 
 
 if __name__ == "__main__":
-    verify_normalization()
+    parser = argparse.ArgumentParser(description="Shield-Ryzen Normalization Verifier")
+    parser.add_argument("--live", action="store_true", help="Include a live webcam frame")
+    args = parser.parse_args()
+    verify_normalization(use_live=args.live)

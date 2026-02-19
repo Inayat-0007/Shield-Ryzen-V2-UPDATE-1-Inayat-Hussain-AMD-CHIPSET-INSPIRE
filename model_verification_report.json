@@ -1,9 +1,113 @@
 {
+  "verification_version": "4.0",
+  "verification_timestamp": "2026-02-19T11:40:59.938645+00:00",
   "checkpoint_path": "ffpp_c23.pth",
   "file_size_bytes": 83519096,
   "checkpoint_hash_sha256": "8bcb10c1567d66bca32776b4c4b8f9e037be37722270e0c65643f7a2c781d762",
   "total_checkpoint_keys": 276,
   "total_model_keys": 276,
+  "matched_key_count": 276,
+  "unmatched_checkpoint_key_count": 0,
+  "missing_model_key_count": 0,
+  "mapping_success_rate": 100.0,
+  "fc_head_rename": {
+    "description": "FC head uses different naming between FF++ training code and timm",
+    "checkpoint_names": [
+      "model.last_linear.1.weight",
+      "model.last_linear.1.bias"
+    ],
+    "model_names": [
+      "fc.weight",
+      "fc.bias"
+    ],
+    "handled": true
+  },
+  "architecture": {
+    "family": "XceptionNet",
+    "timm_variant": "legacy_xception",
+    "num_classes": 2,
+    "input_shape": [
+      1,
+      3,
+      299,
+      299
+    ],
+    "output_shape": [
+      1,
+      2
+    ],
+    "mechanism": "Depthwise separable convolutions decompose standard convolutions into a depthwise convolution (per-channel spatial filtering) followed by a pointwise 1x1 convolution (cross-channel mixing). The LEARNED FILTERS within these convolutions detect microscopic digital artifacts and texture inconsistencies specific to GAN/Diffusion-generated faces.",
+    "conv_counts": {
+      "depthwise": 34,
+      "pointwise": 38,
+      "standard": 2,
+      "separable_pairs": 34
+    },
+    "parameters": {
+      "total_parameters": 20811050,
+      "trainable_parameters": 20811050,
+      "per_block": {
+        "conv1": 864,
+        "bn1": 64,
+        "conv2": 18432,
+        "bn2": 128,
+        "block1": 35264,
+        "block2": 136064,
+        "block3": 915944,
+        "block4": 1613976,
+        "block5": 1613976,
+        "block6": 1613976,
+        "block7": 1613976,
+        "block8": 1613976,
+        "block9": 1613976,
+        "block10": 1613976,
+        "block11": 1613976,
+        "block12": 2039584,
+        "conv3": 1582080,
+        "bn3": 3072,
+        "conv4": 3159552,
+        "bn4": 4096,
+        "fc": 4098
+      }
+    }
+  },
+  "normalization": {
+    "mean": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "std": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "range": [
+      -1.0,
+      1.0
+    ],
+    "formula": "(pixel / 255.0 - 0.5) / 0.5"
+  },
+  "output_mapping": {
+    "index_0": "FAKE probability",
+    "index_1": "REAL probability",
+    "activation": "softmax (in ShieldXception.forward)"
+  },
+  "reference_output": {
+    "reference_input": "zeros(1, 3, 299, 299)",
+    "output_raw": [
+      [
+        1.6866817474365234,
+        -1.7880210876464844
+      ]
+    ],
+    "output_shape": [
+      1,
+      2
+    ],
+    "fake_prob": 0.9699593186378479,
+    "real_prob": 0.030040644109249115
+  },
   "matched_keys": [
     {
       "checkpoint": "model.conv1.weight",
@@ -1100,16 +1204,16 @@
     {
       "checkpoint": "model.bn4.num_batches_tracked",
       "model": "bn4.num_batches_tracked"
+    },
+    {
+      "checkpoint": "model.last_linear.1.weight",
+      "model": "fc.weight"
+    },
+    {
+      "checkpoint": "model.last_linear.1.bias",
+      "model": "fc.bias"
     }
   ],
-  "unmatched_checkpoint_keys": [
-    "model.last_linear.1.weight",
-    "model.last_linear.1.bias"
-  ],
-  "missing_model_keys": [
-    "fc.weight",
-    "fc.bias"
-  ],
-  "verification_timestamp": "",
-  "mapping_success_rate": 99.28
+  "unmatched_checkpoint_keys": [],
+  "missing_model_keys": []
 }

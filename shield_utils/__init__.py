@@ -42,11 +42,22 @@ from shield_utils_core import (
     # Calibration
     calibrate_device_baseline,
     ConfidenceCalibrator,
+    # State Machine
+    DecisionStateMachine,
+    # Blink Tracker
+    BlinkTracker,
+    # Signal Smoother
+    SignalSmoother,
+    # Distance
+    estimate_distance,
     # Classification
     classify_face,
 )
 
-from .blazeface_detector import BlazeFaceDetector
+try:
+    from .blazeface_detector import BlazeFaceDetector
+except ImportError:
+    BlazeFaceDetector = None  # type: ignore[assignment,misc]
 
 __all__ = [
     "load_config", "CONFIG",
@@ -56,8 +67,10 @@ __all__ = [
     "setup_logger",
     "preprocess_face",
     "compute_ear", "calculate_ear", "analyze_blink_pattern",
-    "compute_texture_score", "check_texture",
+    "compute_texture_score", "check_texture", "_compute_hf_energy_ratio",
     "calibrate_device_baseline", "ConfidenceCalibrator",
+    "DecisionStateMachine", "BlinkTracker", "SignalSmoother",
+    "estimate_distance",
     "classify_face",
     "BlazeFaceDetector",
 ]

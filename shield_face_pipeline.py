@@ -8,19 +8,30 @@ Features:
   - Multi-face detection (returns ALL faces, sorted by area)
   - Head pose estimation via solvePnP (yaw/pitch/roll)
   - Occlusion scoring per face
+  - 478→68 landmark conversion with anatomical documentation
   - Correct XceptionNet normalization (FF++ standard: mean=0.5, std=0.5)
-  - BGR->RGB conversion verified
+  - BGR→RGB conversion verified
   - Supports 'mediapipe' and 'dnn_ssd' detector backends
 
-Normalization Documentation:
-  FaceForensics++ XceptionNet was trained with:
+Normalization Documentation (LOGIC COLLAPSE FIX):
+  ═══════════════════════════════════════════════════════════
+  FaceForensics++ XceptionNet was trained with torchvision:
+    transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5])
+  Applied AFTER transforms.ToTensor() which scales [0,255]→[0.0,1.0]:
     pixel_float = pixel_uint8 / 255.0
     normalized = (pixel_float - 0.5) / 0.5
-  This maps [0, 255] -> [-1.0, 1.0]
-  This is equivalent to: pixel * (2.0/255.0) - 1.0
+  This maps [0, 255] → [-1.0, +1.0]  (OPTION B from spec)
+  
+  EVIDENCE: FaceForensics++ official code:
+    github.com/ondyari/FaceForensics → classification/detect_from_video.py
+    Uses: transforms.Normalize([0.5]*3, [0.5]*3)
+  
+  NOT Option A (ImageNet): mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]
+  NOT Option C (broken):   (uint8 - 0.5) / 0.5 on raw [0,255] range
+  ═══════════════════════════════════════════════════════════
 
 Developer: Inayat Hussain | AMD Slingshot 2026
-Part 2 of 12 — Face Detection, Preprocessing & Multi-Face
+Part 2 of 14 — Face Detection, Preprocessing & Normalization Fix
 """
 
 from __future__ import annotations
@@ -51,18 +62,21 @@ class FaceDetection:
     Attributes:
         bbox: (x, y, w, h) bounding box in pixel coordinates.
         confidence: Detection confidence [0.0, 1.0].
-        landmarks: (N, 2) array of landmark (x, y) pixel coordinates.
-            N=478 for MediaPipe, N=68 for dlib/SSD+landmark.
+        landmarks_478: (478, 3) raw MediaPipe normalized (x, y, z) landmarks.
+        landmarks_68: (68, 2) standard 68-point PIXEL coordinates.
+        landmarks: (N, 2) array of pixel (x, y) — alias for primary landmarks.
         landmark_confidence: Quality score of landmark detection [0.0, 1.0].
         head_pose: (yaw, pitch, roll) in degrees.
         face_crop_299: 299x299 float32 NCHW tensor ready for inference.
         face_crop_raw: Original BGR crop before normalization.
         occlusion_score: 0.0=fully visible, 1.0=fully occluded.
-        is_frontal: True if |yaw| < 15 and |pitch| < 15 degrees.
+        is_frontal: True if within yaw/pitch thresholds.
         ear_reliable: True if occlusion < 0.5 (EAR can be trusted).
     """
     bbox: tuple[int, int, int, int]                # x, y, w, h
     confidence: float = 0.0
+    landmarks_478: np.ndarray = field(default_factory=lambda: np.empty((0, 3)))
+    landmarks_68: np.ndarray = field(default_factory=lambda: np.empty((0, 2)))
     landmarks: np.ndarray = field(default_factory=lambda: np.empty((0, 2)))
     landmark_confidence: float = 0.0
     head_pose: tuple[float, float, float] = (0.0, 0.0, 0.0)  # yaw, pitch, roll
@@ -72,7 +86,7 @@ class FaceDetection:
     is_frontal: bool = True
     ear_reliable: bool = True
     blendshapes: Optional[list] = None               # List of category scores
-    transformation_matrix: Optional[np.ndarray] = None # (4, 4) transformation matrix
+    transformation_matrix: Optional[np.ndarray] = None  # (4, 4) transformation matrix
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -87,7 +101,7 @@ _NORM_MEAN = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 _NORM_STD = np.array([0.5, 0.5, 0.5], dtype=np.float32)
 _INPUT_SIZE = 299
 
-# Frontal-face thresholds (degrees) - Aggressively relaxed for consumer webcams
+# Frontal-face thresholds (degrees) - Relaxed for consumer webcams
 _YAW_THRESHOLD = 45.0
 _PITCH_THRESHOLD = 35.0
 
@@ -109,12 +123,150 @@ _MODEL_POINTS_3D = np.array([
 # left mouth=61, right mouth=291
 _MP_POSE_INDICES = [1, 152, 33, 263, 61, 291]
 
+# ═══════════════════════════════════════════════════════════════
+# MediaPipe 478 → Standard 68+20 Landmark Mapping
+# ═══════════════════════════════════════════════════════════════
+#
+# Standard 68-point landmarks follow the Multi-PIE / iBUG convention:
+#   Points  1-17: Jaw contour (right ear → chin → left ear)
+#   Points 18-22: Right eyebrow (inner → outer) [anatomical right]
+#   Points 23-27: Left eyebrow (inner → outer) [anatomical left]
+#   Points 28-31: Nose bridge (top → tip)
+#   Points 32-36: Nose bottom (left nostril → right nostril)
+#   Points 37-42: Right eye (outer → inner, upper then lower)
+#   Points 43-48: Left eye (inner → outer, upper then lower)
+#   Points 49-60: Outer lip
+#   Points 61-68: Inner lip
+#
+# The 478 indices below come from the canonical MediaPipe FaceMesh
+# geometry (indexed from 0). Each index is documented with its
+# anatomical landmark label for traceability.
+
+# Jaw contour (17 points: from right ear → chin → left ear)
+_MP_JAW_INDICES = [
+    10,   # 1  Right temple / ear area
+    338,  # 2  Right upper jaw
+    297,  # 3  Right jaw
+    332,  # 4  Right lower jaw
+    284,  # 5  Right jaw angle
+    251,  # 6  Right lower cheek
+    389,  # 7  Right chin area
+    356,  # 8  Right of chin
+    454,  # 9  Chin center
+    323,  # 10 Left of chin
+    361,  # 11 Left chin area
+    288,  # 12 Left lower cheek
+    397,  # 13 Left jaw angle
+    365,  # 14 Left lower jaw
+    379,  # 15 Left jaw
+    378,  # 16 Left upper jaw
+    400,  # 17 Left temple / ear area
+]
+
+# Right eyebrow (5 points: inner → outer) [subject's right]
+_MP_RIGHT_BROW_INDICES = [
+    70,   # 18 Inner right brow
+    63,   # 19 Inner-mid right brow
+    105,  # 20 Mid right brow
+    66,   # 21 Outer-mid right brow
+    107,  # 22 Outer right brow
+]
+
+# Left eyebrow (5 points: inner → outer) [subject's left]
+_MP_LEFT_BROW_INDICES = [
+    336,  # 23 Inner left brow
+    296,  # 24 Inner-mid left brow
+    334,  # 25 Mid left brow
+    293,  # 26 Outer-mid left brow
+    300,  # 27 Outer left brow
+]
+
+# Nose bridge (4 points: top → tip)
+_MP_NOSE_BRIDGE_INDICES = [
+    168,  # 28 Nasion (bridge top)
+    6,    # 29 Mid bridge
+    197,  # 30 Lower bridge
+    195,  # 31 Nose tip approach
+]
+
+# Nose bottom (5 points: left → right through tip)
+_MP_NOSE_BOTTOM_INDICES = [
+    5,    # 32 Left nostril outer
+    4,    # 33 Left nostril
+    1,    # 34 Nose tip (pronasale)
+    19,   # 35 Right nostril
+    94,   # 36 Right nostril outer
+]
+
+# Right eye (6 points: outer corner CW) [subject's right]
+_MP_RIGHT_EYE_INDICES = [
+    33,   # 37 Right eye outer corner (lateral canthus)
+    160,  # 38 Right eye upper lid outer
+    158,  # 39 Right eye upper lid inner
+    133,  # 40 Right eye inner corner (medial canthus)
+    153,  # 41 Right eye lower lid inner
+    144,  # 42 Right eye lower lid outer
+]
+
+# Left eye (6 points: inner corner CW) [subject's left]
+_MP_LEFT_EYE_INDICES = [
+    362,  # 43 Left eye inner corner (medial canthus)
+    385,  # 44 Left eye upper lid inner
+    387,  # 45 Left eye upper lid outer
+    263,  # 46 Left eye outer corner (lateral canthus)
+    373,  # 47 Left eye lower lid outer
+    380,  # 48 Left eye lower lid inner
+]
+
+# Outer lip (12 points: CW from right corner)
+_MP_OUTER_LIP_INDICES = [
+    61,   # 49 Right mouth corner
+    185,  # 50 Upper lip right outer
+    40,   # 51 Upper lip right
+    39,   # 52 Upper lip center-right
+    37,   # 53 Upper lip center
+    0,    # 54 Upper lip center-left
+    267,  # 55 Upper lip left
+    269,  # 56 Upper lip left outer
+    270,  # 57 Left mouth corner
+    409,  # 58 Lower lip left outer
+    291,  # 59 Lower lip center
+    375,  # 60 Lower lip right outer
+]
+
+# Inner lip (8 points: CW from right inner corner)
+_MP_INNER_LIP_INDICES = [
+    78,   # 61 Right inner corner
+    191,  # 62 Upper inner lip right
+    80,   # 63 Upper inner lip center
+    81,   # 64 Upper inner lip left
+    308,  # 65 Left inner corner
+    415,  # 66 Lower inner lip left
+    310,  # 67 Lower inner lip center
+    311,  # 68 Lower inner lip right
+]
+
+# Combined 68-point mapping (ordered 1→68)
+_MP_478_TO_68_INDICES = (
+    _MP_JAW_INDICES              # 1-17
+    + _MP_RIGHT_BROW_INDICES     # 18-22
+    + _MP_LEFT_BROW_INDICES      # 23-27
+    + _MP_NOSE_BRIDGE_INDICES    # 28-31
+    + _MP_NOSE_BOTTOM_INDICES    # 32-36
+    + _MP_RIGHT_EYE_INDICES      # 37-42
+    + _MP_LEFT_EYE_INDICES       # 43-48
+    + _MP_OUTER_LIP_INDICES      # 49-60
+    + _MP_INNER_LIP_INDICES      # 61-68
+)
+
+assert len(_MP_478_TO_68_INDICES) == 68, (
+    f"Landmark mapping must produce exactly 68 points, got {len(_MP_478_TO_68_INDICES)}"
+)
+
 # Key landmark groups for occlusion checking (MediaPipe 478-mesh)
-_MP_LEFT_EYE_INDICES = [33, 160, 158, 133, 153, 144]
-_MP_RIGHT_EYE_INDICES = [362, 385, 387, 263, 373, 380]
-_MP_NOSE_INDICES = [1, 2, 98, 327]
-_MP_MOUTH_INDICES = [61, 291, 13, 14, 78, 308]
-_MP_FOREHEAD_INDICES = [10, 338, 297, 332, 284]
+_MP_NOSE_CHECK_INDICES = [1, 2, 98, 327]
+_MP_MOUTH_CHECK_INDICES = [61, 291, 13, 14, 78, 308]
+_MP_FOREHEAD_CHECK_INDICES = [10, 338, 297, 332, 284]
 
 # Occlusion threshold — above this, EAR results are unreliable
 _OCCLUSION_UNRELIABLE_THRESHOLD = 0.35
@@ -186,7 +338,6 @@ class ShieldFacePipeline:
         min_confidence: float,
     ) -> None:
         """Initialize MediaPipe FaceLandmarker backend."""
-        # Use Tasks API import
         from mediapipe.tasks import python
         from mediapipe.tasks.python import vision
 
@@ -200,7 +351,6 @@ class ShieldFacePipeline:
         if not os.path.exists(full_path):
             raise FileNotFoundError(f"MediaPipe model not found: {full_path}")
 
-        
         model_size_mb = os.path.getsize(full_path) / 1024 / 1024
         _log.info(
             "MediaPipe FaceLandmarker: %.1f MB, expected accuracy: ~95%% "
@@ -212,10 +362,6 @@ class ShieldFacePipeline:
             model_asset_path=full_path,
             delegate=python.BaseOptions.Delegate.CPU
         )
-        
-        # Define callback for LIVE_STREAM mode
-        def _on_result(result, image, timestamp_ms):
-            self._latest_result = result
 
         # Use VIDEO mode for synchronous processing
         options = vision.FaceLandmarkerOptions(
@@ -228,7 +374,7 @@ class ShieldFacePipeline:
             output_face_blendshapes=True,
             output_facial_transformation_matrixes=True,
         )
-        
+
         self._landmarker = vision.FaceLandmarker.create_from_options(options)
         self._mp = python.vision
 
@@ -281,6 +427,31 @@ class ShieldFacePipeline:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Align face using eye centers, crop, normalize for XceptionNet.
 
+        ██████████████████████████████████████████████████████████
+        ██ LOGIC COLLAPSE FIX POINT — NORMALIZATION PIPELINE   ██
+        ██████████████████████████████████████████████████████████
+
+        Step 1: Expand bbox by 30% margin for face context
+        Step 2: Crop face region from frame
+        Step 3: Resize to exactly 299×299
+
+        Step 4: NORMALIZATION (OPTION B — FF++ [-1, 1]):
+            face_float = face_crop.astype(np.float32) / 255.0   # [0, 1]
+            face_norm  = (face_float - 0.5) / 0.5               # [-1, 1]
+
+            EVIDENCE: FaceForensics++ training code uses:
+              transforms.Normalize([0.5,0.5,0.5], [0.5,0.5,0.5])
+            Applied AFTER ToTensor() which scales [0,255]→[0,1].
+            Verified by scripts/verify_normalization.py (Part 1).
+
+        Step 5: Convert BGR → RGB
+            face_rgb = cv2.cvtColor(face_resized, cv2.COLOR_BGR2RGB)
+            Done BEFORE normalization to match training pipeline.
+
+        Step 6: Transpose to NCHW: (1, 3, 299, 299)
+            input_tensor = np.transpose(face_norm, (2, 0, 1))  # HWC→CHW
+            input_tensor = np.expand_dims(input_tensor, 0)      # add batch
+
         Args:
             frame: Full BGR image.
             bbox: (x, y, w, h) bounding box.
@@ -294,7 +465,7 @@ class ShieldFacePipeline:
         x, y, w, h = bbox
         fh, fw = frame.shape[:2]
 
-        # Expand bounding box by 30% margin for context
+        # Step 1: Expand bounding box by 30% margin for context
         # WHY: Tight crops lose forehead/chin, hurting Xception accuracy
         margin = 0.3
         cx, cy = x + w // 2, y + h // 2
@@ -305,32 +476,67 @@ class ShieldFacePipeline:
         x2 = min(fw, cx + half_size)
         y2 = min(fh, cy + half_size)
 
+        # Step 2: Crop
         face_crop_raw = frame[y1:y2, x1:x2].copy()
         if face_crop_raw.size == 0:
-            # Fallback to bbox if margin expansion fails
             face_crop_raw = frame[y:y+h, x:x+w].copy()
 
         if face_crop_raw.size == 0:
-            # Return blank tensor if crop completely fails
             blank = np.zeros((1, 3, _INPUT_SIZE, _INPUT_SIZE), dtype=np.float32)
             return blank, np.zeros((10, 10, 3), dtype=np.uint8)
 
-        # Resize to 299x299 (XceptionNet input requirement)
+        # Step 3: Resize to 299×299 (XceptionNet input requirement)
         face_resized = cv2.resize(face_crop_raw, (_INPUT_SIZE, _INPUT_SIZE))
 
-        # Convert BGR (OpenCV) -> RGB (model training format)
+        # Step 5 (before Step 4): Convert BGR → RGB
         # CRITICAL: OpenCV loads as BGR, but the model was trained on RGB.
+        # This MUST happen before normalization to match the training pipeline.
         face_rgb = cv2.cvtColor(face_resized, cv2.COLOR_BGR2RGB)
 
-        # Normalize to [-1, 1] using FF++ standard: (x/255 - 0.5) / 0.5
+        # Step 4: Normalize to [-1, 1] using FF++ standard
+        #   Formula: normalized = (pixel_uint8 / 255.0 - 0.5) / 0.5
+        #   Equivalent to: pixel * (2.0 / 255.0) - 1.0
         face_float = face_rgb.astype(np.float32) / 255.0
         face_norm = (face_float - _NORM_MEAN) / _NORM_STD
 
-        # Convert HWC -> NCHW (batch dimension + channels first)
+        # Step 6: Convert HWC → NCHW (batch dimension + channels first)
         face_chw = np.transpose(face_norm, (2, 0, 1))
         face_tensor = np.expand_dims(face_chw, axis=0).astype(np.float32)
 
         return face_tensor, face_crop_raw
+
+    def _convert_478_to_68(
+        self,
+        landmarks_478: np.ndarray,
+        frame_width: int,
+        frame_height: int,
+    ) -> np.ndarray:
+        """Convert MediaPipe 478-point mesh to standard 68-point landmarks.
+
+        Uses the anatomically-documented mapping defined in
+        _MP_478_TO_68_INDICES (see module-level constants).
+
+        MediaPipe provides NORMALIZED coordinates in [0.0, 1.0].
+        This method converts them to PIXEL coordinates:
+            px = landmark.x * frame_width
+            py = landmark.y * frame_height
+
+        Args:
+            landmarks_478: (478, 3) normalized MediaPipe landmarks.
+            frame_width: Width of source frame in pixels.
+            frame_height: Height of source frame in pixels.
+
+        Returns:
+            (68, 2) array of pixel (x, y) coordinates.
+        """
+        landmarks_68 = np.zeros((68, 2), dtype=np.float32)
+
+        for i, mp_idx in enumerate(_MP_478_TO_68_INDICES):
+            if mp_idx < landmarks_478.shape[0]:
+                landmarks_68[i, 0] = landmarks_478[mp_idx, 0] * frame_width
+                landmarks_68[i, 1] = landmarks_478[mp_idx, 1] * frame_height
+
+        return landmarks_68
 
     def estimate_head_pose(
         self,
@@ -350,7 +556,6 @@ class ShieldFacePipeline:
             (yaw, pitch, roll) in degrees. (0, 0, 0) = perfectly frontal.
         """
         if landmarks_2d.shape[0] < max(_MP_POSE_INDICES) + 1:
-            # Insufficient landmarks for pose estimation
             return (0.0, 0.0, 0.0)
 
         # Extract the 6 reference points from MediaPipe 478-mesh
@@ -385,7 +590,6 @@ class ShieldFacePipeline:
         rotation_mat, _ = cv2.Rodrigues(rotation_vec)
 
         # Decompose rotation matrix to Euler angles
-        # Use RQDecomp3x3 for yaw/pitch/roll extraction
         proj_matrix = np.hstack((rotation_mat, translation_vec))
         euler_angles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
 
@@ -417,9 +621,9 @@ class ShieldFacePipeline:
 
         Returns:
             Occlusion score: 0.0=fully visible, 1.0=fully occluded.
+            If > 0.5, EAR results are unreliable.
         """
         if landmarks_2d.shape[0] < 400:
-            # Not enough landmarks to assess (non-MediaPipe detector)
             return 0.0
 
         x, y, w, h = bbox
@@ -429,11 +633,11 @@ class ShieldFacePipeline:
 
         # Check each landmark group for visibility
         for group_name, indices in [
-            ("left_eye", _MP_LEFT_EYE_INDICES),
-            ("right_eye", _MP_RIGHT_EYE_INDICES),
-            ("nose", _MP_NOSE_INDICES),
-            ("mouth", _MP_MOUTH_INDICES),
-            ("forehead", _MP_FOREHEAD_INDICES),
+            ("left_eye", _MP_RIGHT_EYE_INDICES),
+            ("right_eye", _MP_LEFT_EYE_INDICES),
+            ("nose", _MP_NOSE_CHECK_INDICES),
+            ("mouth", _MP_MOUTH_CHECK_INDICES),
+            ("forehead", _MP_FOREHEAD_CHECK_INDICES),
         ]:
             visible = 0
             total = len(indices)
@@ -450,18 +654,18 @@ class ShieldFacePipeline:
             checks.append(1.0 - (visible / total if total > 0 else 0.0))
 
         # Check inter-eye distance plausibility
-        if landmarks_2d.shape[0] > max(_MP_LEFT_EYE_INDICES + _MP_RIGHT_EYE_INDICES):
-            left_eye_center = landmarks_2d[_MP_LEFT_EYE_INDICES].mean(axis=0)
-            right_eye_center = landmarks_2d[_MP_RIGHT_EYE_INDICES].mean(axis=0)
+        max_eye_idx = max(_MP_RIGHT_EYE_INDICES + _MP_LEFT_EYE_INDICES)
+        if landmarks_2d.shape[0] > max_eye_idx:
+            left_eye_center = landmarks_2d[_MP_RIGHT_EYE_INDICES].mean(axis=0)
+            right_eye_center = landmarks_2d[_MP_LEFT_EYE_INDICES].mean(axis=0)
             eye_dist = np.linalg.norm(left_eye_center - right_eye_center)
             # Eye distance should be ~30-50% of face width
             eye_ratio = eye_dist / max(w, 1)
             if eye_ratio < 0.15 or eye_ratio > 0.8:
-                checks.append(0.3)  # Suspicious eye distance (supplementary signal)
+                checks.append(0.3)  # Suspicious eye distance
             else:
                 checks.append(0.0)
 
-        # Weighted average: visibility checks dominate, inter-eye is supplementary
         occlusion = float(np.mean(checks)) if checks else 0.0
         return round(occlusion, 3)
 
@@ -514,14 +718,24 @@ class ShieldFacePipeline:
         detections: list[FaceDetection] = []
 
         for i, face_lms in enumerate(result.face_landmarks):
-            # Convert normalized landmarks to pixel coordinates
-            lm_array = np.array([
-                [lm.x * w, lm.y * h] for lm in face_lms
-            ], dtype=np.float32)
+            # Raw MediaPipe 478 landmarks: normalized (x, y, z)
+            raw_478 = np.array(
+                [[lm.x, lm.y, lm.z] for lm in face_lms],
+                dtype=np.float32,
+            )
+
+            # Convert normalized landmarks to pixel coordinates (N, 2)
+            lm_pixel = np.array(
+                [[lm.x * w, lm.y * h] for lm in face_lms],
+                dtype=np.float32,
+            )
+
+            # Convert 478 → 68 standard landmarks (pixel coords)
+            lm_68 = self._convert_478_to_68(raw_478, w, h)
 
             # Compute bounding box from landmarks
-            xs = lm_array[:, 0]
-            ys = lm_array[:, 1]
+            xs = lm_pixel[:, 0]
+            ys = lm_pixel[:, 1]
             x_min = max(0, int(xs.min()) - 10)
             y_min = max(0, int(ys.min()) - 10)
             x_max = min(w, int(xs.max()) + 10)
@@ -529,40 +743,39 @@ class ShieldFacePipeline:
             bbox = (x_min, y_min, x_max - x_min, y_max - y_min)
 
             # Detection confidence from landmark quality
-            # MediaPipe doesn't expose per-face confidence directly,
-            # so we estimate from landmark dispersion
-            landmark_conf = self._estimate_landmark_confidence(lm_array, bbox)
+            landmark_conf = self._estimate_landmark_confidence(lm_pixel, bbox)
 
             # Head pose estimation
-            head_pose = self.estimate_head_pose(lm_array, (w, h))
-            
+            head_pose = self.estimate_head_pose(lm_pixel, (w, h))
+
             # Hybrid Frontal Logic: SolvePnP + Spatial Heuristic
             pnp_frontal = (
                 abs(head_pose[0]) < _YAW_THRESHOLD
                 and abs(head_pose[1]) < _PITCH_THRESHOLD
             )
-            
-            # Spatial Heuristic: If face is large and centered, we are extremely confident it's frontal
-            img_h, img_w = frame.shape[:2]
+
+            # Spatial Heuristic: If face is large and centered, likely frontal
             f_x, f_y, f_w, f_h = bbox
             f_cx = f_x + f_w / 2
             f_cy = f_y + f_h / 2
-            centered = (abs(f_cx - img_w / 2) < (img_w * 0.25)) and (abs(f_cy - img_h / 2) < (img_h * 0.25))
-            large = (f_w * f_h) > (img_w * img_h * 0.03) # 3% of screen
-            
+            centered = (abs(f_cx - w / 2) < (w * 0.25)) and (abs(f_cy - h / 2) < (h * 0.25))
+            large = (f_w * f_h) > (w * h * 0.03)  # 3% of screen
+
             is_frontal = pnp_frontal or (centered and large)
 
             # Occlusion scoring
-            occlusion = self.estimate_occlusion(lm_array, bbox, (w, h))
+            occlusion = self.estimate_occlusion(lm_pixel, bbox, (w, h))
             ear_reliable = occlusion < _OCCLUSION_UNRELIABLE_THRESHOLD
 
             # Align, crop, and normalize
-            face_tensor, face_raw = self.align_and_crop(frame, bbox, lm_array)
+            face_tensor, face_raw = self.align_and_crop(frame, bbox, lm_pixel)
 
             detection = FaceDetection(
                 bbox=bbox,
-                confidence=max(0.5, landmark_conf),  # Floor at 0.5 since detected
-                landmarks=lm_array,
+                confidence=max(0.5, landmark_conf),
+                landmarks_478=raw_478,
+                landmarks_68=lm_68,
+                landmarks=lm_pixel,
                 landmark_confidence=landmark_conf,
                 head_pose=head_pose,
                 face_crop_299=face_tensor,
@@ -576,7 +789,6 @@ class ShieldFacePipeline:
             detections.append(detection)
 
         # Sort by bounding box area (largest first)
-        # WHY: Largest face is likely the primary subject
         detections.sort(key=lambda d: d.bbox[2] * d.bbox[3], reverse=True)
 
         return detections
@@ -618,6 +830,8 @@ class ShieldFacePipeline:
             detection = FaceDetection(
                 bbox=bbox,
                 confidence=conf,
+                landmarks_478=np.empty((0, 3)),
+                landmarks_68=np.empty((0, 2)),
                 landmarks=np.empty((0, 2)),
                 landmark_confidence=0.0,
                 head_pose=(0.0, 0.0, 0.0),

@@ -13,7 +13,7 @@ Outputs:
   - Saves to config/decision_thresholds.yaml
 
 Developer: Inayat Hussain | AMD Slingshot 2026
-Part 3 of 12 -- Liveness, Forensic Analysis & Calibration
+Part 3 of 14 — Liveness, Forensics & Decision Logic Calibration
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ _PROJECT_ROOT = _SCRIPT_DIR.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from shield_utils import setup_logger, ConfidenceCalibrator
+from shield_utils_core import setup_logger, ConfidenceCalibrator
 
 _log = setup_logger("ThresholdOptimizer")
 
@@ -314,7 +314,8 @@ def main() -> None:
 
     # Also save temperature scaling params
     calibrator = ConfidenceCalibrator(temperature=1.5)
-    calibrator.save_params()
+    params_path = os.path.join(str(_PROJECT_ROOT), 'config', 'temperature_params.json')
+    calibrator.save_params(params_path)
     _log.info("Temperature scaling params saved (T=%.2f)", calibrator.temperature)
 
     print("\n--- RESULTS SUMMARY ---")

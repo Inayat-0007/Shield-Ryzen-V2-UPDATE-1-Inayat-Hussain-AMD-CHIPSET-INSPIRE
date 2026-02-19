@@ -5,12 +5,18 @@ import json
 import argparse
 import numpy as np
 import random
-import matplotlib.pyplot as plt
+import random
+
+try:
+    import matplotlib.pyplot as plt
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
 
 # Adjust sys.path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from v3_int8_engine import ShieldEngine
+from shield_engine import ShieldEngine
 
 def calculate_metrics(y_true, y_scores):
     """
