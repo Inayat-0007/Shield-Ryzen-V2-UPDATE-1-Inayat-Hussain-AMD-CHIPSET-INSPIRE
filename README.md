@@ -3,11 +3,10 @@
 
 > *"Forged in the silicon fires of AMD Ryzen AI. Architected by the visionary Inayat Hussain."*
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-AMD%20Ryzen%20AI-orange.svg)](https://www.amd.com/en/products/ryzen-ai)
 [![Status](https://img.shields.io/badge/Status-DIAMOND%20TIER-00d4ff.svg)](https://github.com/Inayat-0007)
 [![Code Style](https://img.shields.io/badge/Code%20Style-Black-000000.svg)](https://github.com/psf/black)
-[![Secure](https://img.shields.io/badge/Security-Hardened-green.svg)](https://github.com/Inayat-0007)
 
 ---
 
@@ -18,6 +17,27 @@ This isn't your grandma's face unlock. This is **The Diamond Tier Protocol**. �
 
 ---
 
+## 🎬 Presentation Gallery
+Dive into the vision behind the code. We have prepared a multi-modal experience for you.
+
+### 🧠 Mind Map (The Logic)
+> *[Click to View Full Resolution Map](PRESENTATION%20DATA/MINDMAP/NotebookLM%20Mind%20Map%20(14).png)*
+![Mind Map Preview](PRESENTATION%20DATA/MINDMAP/NotebookLM%20Mind%20Map%20(14).png)
+
+### 🎙️ The Pitch (Podcast)
+> *Listen to the Architect explain the "Three-Layer Shield" concept.*
+
+| 🇺🇸 English Pitch | 🇮🇳 Hindi Pitch |
+| :---: | :---: |
+| [▶️ Listen (MP4)](PRESENTATION%20DATA/PODCAST/Shield-Ryzen_V2_Edge_Biometrics_Pitch.m4a) | [▶️ Listen (Hindi)](PRESENTATION%20DATA/PODCAST/डीपफेक_रोकने_का_त्रि-स्तरीय_सुरक्षा_कवच.m4a) |
+
+### 📊 The Deck (Slide Presentation)
+> *Detailed architectural breakdown and business case.*
+
+*   📄 **[View Full PDF Deck (22MB)](PRESENTATION%20DATA/PPT/Shield-Ryzen_V2_Neural_Enclave.pdf)**
+
+---
+
 ## ⚡ Technical Flex (Under the Hood)
 Project **SHIELD** brings the heat with a fully integrated pipeline that outperforms industry standards:
 
@@ -25,32 +45,24 @@ Project **SHIELD** brings the heat with a fully integrated pipeline that outperf
 > *We took the heavy models and crushed them into diamonds.*
 *   **Architecture**: Custom Xception-based feature extractor trained on FaceForensics++.
 *   **Optimization**: Static INT8 quantization via ONNX Runtime.
-*   **Performance**: **4x Faster** than FP32. **0% Accuracy Loss**. Runs purely on the edge.
+*   **Performance**: **4x Faster** than FP32. **0% Accuracy Loss**. Risks pure edge execution.
 
 ### 👁️ 2. Bio-Liveness Blendshapes
 > *Deepfakes don't stand a chance.*
 *   **Technology**: MediaPipe V2 Tasks API.
-*   **Detection**: Tracks **478 facial micro-movements** including specific eye-blink coefficients (indices 9 & 10).
-*   **Logic**: Strict **Circular Validation Protocol** prevents static photo spoofing by enforcing biological blink events.
+*   **Detection**: Tracks **478 facial micro-movements** including specific eye-blink coefficients.
+*   **Logic**: Strict **Circular Validation Protocol** prevents static photo spoofing.
 
 ### 🔄 3. Circular Validation Protocol (CVP)
 > *Trust, but verify. Then verify again.*
 *   **Self-Audit**: A continuous logic loop that cross-references Neural Confidence, Texture Forensics, and Liveness States.
-*   **State Machine**: Hysteresis-based decision logic (`shield_utils_core.py`) ensures stability, eliminating flickering.
-
-### 📷 4. DirectShow Hardening
-> *Hardware-level optimization.*
-*   **Backend**: Forced `cv2.CAP_DSHOW` implementation for Windows.
-*   **Zero-Copy**: Maximized throughput with minimal latency.
-*   **Multi-Cam**: Auto-detection of all connected peripherals.
+*   **State Machine**: Hysteresis-based decision logic (`shield_utils_core.py`) ensures stability.
 
 ---
 
 ## 👑 The Architect: Inayat Hussain
 **aka `Inayat-0007`**
 *The mastermind who looked at "impossible" and said "bet".*
-
-This entire architecture was conceived, designed, and executed by **Inayat**. From the complex mathematical calibration of the blink thresholds to the low-level memory management of the ONNX session, every line of code reflects a commitment to excellence.
 
 **Achievements Unlocked**:
 *   🏆 **Secure Enclave Architect**: Designed a closed-loop security system.
@@ -65,7 +77,6 @@ This entire architecture was conceived, designed, and executed by **Inayat**. Fr
 *   Windows 10/11
 *   Webcam (External or Integrated)
 *   Python 3.10+
-*   AMD Ryzen CPU (Recommended for max speed)
 
 ### Installation
 1.  **Clone the Magic**:
@@ -100,14 +111,6 @@ graph TD
     H --> I[Decision State Machine]
     I --> J[SECURE ENCLAVE HUD]
 ```
-
----
-
-## 📸 Screenshots (The Evidence)
-
-| Verified (Real) | Rejected (Spoof) | Wait State (Static) |
-| :---: | :---: | :---: |
-| ![Verified](https://via.placeholder.com/300x200/00ff00/000000?text=VERIFIED) | ![Rejected](https://via.placeholder.com/300x200/ff0000/000000?text=FAKE) | ![Wait](https://via.placeholder.com/300x200/ffa500/000000?text=WAIT_BLINK) |
 
 ---
 
