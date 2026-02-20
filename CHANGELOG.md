@@ -1,9 +1,18 @@
 # Shield-Ryzen V2 Changelog
 
-## V2.2.0 (The Anti-Replay Update - LATEST)
-### New Security Features
+## V2.3.0 (The Precision Update - LATEST)
+### Critical Fixes
+*   **Eliminated False Positives on Real Faces**: Physics thresholds recalibrated using audit data — real faces at 50cm (texture 200-600) no longer falsely trigger SCREEN_REPLAY.
+*   **Percentage-Based FAKE Lockout**: Replaced raw count lockout with rolling 60-frame window analysis. Lockout triggers only when FAKE % exceeds 50% (AI videos = 56-82%, real faces = 28%).
+*   **Calibrated Screen Detection Layers**: Moiré threshold 0.25→0.50, Screen Light 0.30→0.50, Signal Fusion requires 3+ signals instead of 2.
+
+### New Features
+*   **Real-Time Texture Debug Log**: `logs/texture_debug.log` captures raw moire/light/physics scores every frame for live analysis.
+*   **Audit-Driven Threshold Tuning**: All thresholds validated against 24 tracked face identities and 21,000+ frames of real-world data.
+
+## V2.2.0 (The Anti-Replay Update)
+### Security Features
 *   **5-Layer Screen Detection**: Physics-based distance-texture cross-validation + Moiré grid analysis + Screen Light Emission detection.
-*   **FAKE Lockout Security**: Automatic 30-second lockout for faces confirmed FAKE to prevent state machine manipulation.
 *   **Neural Trace Memory**: Tracks historical confidence minima to prevent deepfake "recovery" after detection.
 *   **Flash Alerts**: Visual flashing red "!! SCREEN REPLAY ATTACK !!" overlay in HUD.
 

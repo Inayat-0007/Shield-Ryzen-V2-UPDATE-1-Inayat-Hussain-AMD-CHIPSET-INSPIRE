@@ -726,16 +726,23 @@ class ShieldEngine:
                 plugin_votes=plugin_votes
             )
             
-            # ── FAKE LOCKOUT MECHANISM ──
-            # Once confirmed FAKE for 5+ consecutive frames, lock out 
-            # promotion to VERIFIED for 30 seconds. Prevents oscillation.
-            if state in ("FAKE", "CRITICAL"):
-                state_ctx.setdefault("fake_streak", 0)
-                state_ctx["fake_streak"] += 1
-                if state_ctx["fake_streak"] >= 5:
-                    state_ctx["fake_lockout_until"] = time.monotonic() + 30.0
-            else:
-                state_ctx["fake_streak"] = 0
+            # ── FAKE LOCKOUT MECHANISM (V2.3) ──
+            # Uses PERCENTAGE of FAKE frames in a rolling window.
+            # From audit analysis:
+            #   Real face:  ~28% FAKE rate (neural jitter is normal)
+            #   AI video:   ~56-82% FAKE rate (consistently suspicious)
+            # Threshold: 50% FAKE in last 60 frames = lockout
+            if "verdict_window" not in state_ctx:
+                state_ctx["verdict_window"] = deque(maxlen=60)
+            
+            state_ctx["verdict_window"].append(1 if state in ("FAKE", "CRITICAL") else 0)
+            window = state_ctx["verdict_window"]
+            
+            if len(window) >= 20:  # Need at least 20 frames for reliable %
+                fake_pct = sum(window) / len(window)
+                # If >50% FAKE over the window, activate lockout
+                if fake_pct > 0.50:
+                    state_ctx["fake_lockout_until"] = time.monotonic() + 20.0
             
             # Track neural confidence minimum — if it ever drops very low,
             # this face has shown deepfake characteristics
@@ -744,7 +751,9 @@ class ShieldEngine:
             
             # Check if currently in fake lockout
             fake_locked = time.monotonic() < state_ctx.get("fake_lockout_until", 0)
-            neural_ever_suspicious = state_ctx["neural_min"] < 0.35
+            # Mark as "ever suspicious" if neural dropped below 20%
+            # (extreme low confidence = definite deepfake artifact)
+            neural_ever_suspicious = state_ctx["neural_min"] < 0.20
             
             # VERIFIED PROMOTION: If REAL + blinks confirmed + tracked >5s
             # This provides the highest trust level for continuously verified faces
@@ -765,7 +774,7 @@ class ShieldEngine:
                 state = "VERIFIED"
                 state_ctx["sm"].state = "VERIFIED"
             
-            # If in fake lockout and state is trying to go REAL, force SUSPICIOUS
+            # If in fake lockout, block ALL positive states
             if fake_locked and state in ("REAL", "VERIFIED"):
                 state = "SUSPICIOUS"
                 state_ctx["sm"].state = "SUSPICIOUS"

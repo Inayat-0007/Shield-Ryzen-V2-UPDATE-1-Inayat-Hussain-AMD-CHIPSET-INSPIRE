@@ -271,23 +271,23 @@ def compute_texture_score(
     screen_confidence = 0.0
     screen_signals = []  # Track signals for Layer 5 fusion
 
-    REFERENCE_TEXTURE = 130.0
+    REFERENCE_TEXTURE = 350.0   # Real faces at 50cm score 200-600
     REFERENCE_DISTANCE = 50.0
 
     if distance_cm > 40:
         max_expected = REFERENCE_TEXTURE * (REFERENCE_DISTANCE / distance_cm) ** 2
-        max_allowed = max_expected * 2.5
+        max_allowed = max_expected * 3.5  # Large safety margin for real face variance
 
         if lap_var > max_allowed:
             screen_replay_flag = True
-            sig = min((lap_var / max_allowed) / 3.0, 1.0)
+            sig = min((lap_var / max_allowed - 1.0) / 2.0, 1.0)
             screen_confidence = max(screen_confidence, sig)
             screen_signals.append(("physics", sig))
 
-    ABSOLUTE_TEXTURE_CAP = 250.0
+    ABSOLUTE_TEXTURE_CAP = 800.0  # Real faces can reach 500+ at close range
     if lap_var > ABSOLUTE_TEXTURE_CAP and not screen_replay_flag:
         screen_replay_flag = True
-        sig = min((lap_var - ABSOLUTE_TEXTURE_CAP) / 200.0, 0.9)
+        sig = min((lap_var - ABSOLUTE_TEXTURE_CAP) / 500.0, 0.9)
         screen_confidence = max(screen_confidence, sig)
         screen_signals.append(("abs_cap", sig))
 
@@ -295,11 +295,11 @@ def compute_texture_score(
     hf_ratio = _compute_hf_energy_ratio(forehead)
     moire_score = _detect_moire_pattern(forehead)
 
-    # Lowered from 0.6 → 0.25: phone screens at close range score 0.25-0.35
-    if moire_score > 0.25:
-        sig = min(moire_score * 1.5, 1.0)
+    # Raised to 0.50: real skin noise scores 0.25-0.40 and was false-positive
+    if moire_score > 0.50:
+        sig = min(moire_score * 1.2, 1.0)
         screen_signals.append(("moire", sig))
-        if moire_score > 0.45:
+        if moire_score > 0.70:  # Very strong = definite screen
             screen_replay_flag = True
             screen_confidence = max(screen_confidence, sig)
 
@@ -309,19 +309,19 @@ def compute_texture_score(
     #   B) Narrow skin chrominance range (synthetic colors)
     #   C) Blue/green color cast from LED backlighting
     screen_light_score = _detect_screen_light(face_crop_raw)
-    if screen_light_score > 0.3:
+    if screen_light_score > 0.50:  # Raised: indoor LED lighting false-positives at 0.30
         screen_signals.append(("screen_light", screen_light_score))
-        if screen_light_score > 0.55:
+        if screen_light_score > 0.70:  # Only confirm on very strong signal
             screen_replay_flag = True
             screen_confidence = max(screen_confidence, screen_light_score)
 
     # ── LAYER 5: Combined Weak-Signal Fusion ──
-    # Multiple marginal signals together confirm screen replay.
-    # Any 2+ signals with strength > 0.2 = screen confirmed.
-    active_signals = [(n, s) for n, s in screen_signals if s > 0.2]
-    if len(active_signals) >= 2 and not screen_replay_flag:
+    # CONSERVATIVE: Require 3+ signals above 0.35 to prevent false positives.
+    # Indoor lighting can produce 1-2 weak signals on real faces.
+    active_signals = [(n, s) for n, s in screen_signals if s > 0.35]
+    if len(active_signals) >= 3 and not screen_replay_flag:
         combined = sum(s for _, s in active_signals) / len(active_signals)
-        if combined > 0.3:
+        if combined > 0.45:
             screen_replay_flag = True
             screen_confidence = max(screen_confidence, combined)
             screen_signals.append(("fusion", combined))
@@ -343,13 +343,26 @@ def compute_texture_score(
         sig_str = "+".join(f"{n}={s:.0%}" for n, s in screen_signals)
         reasons.append(f"SCREEN REPLAY (conf={screen_confidence:.0%}, signals=[{sig_str}])")
 
-    # Build explanation string
+    # Build explanation string — always include raw signal values for debugging
     baseline_str = f"adaptive baseline={device_baseline}" if device_baseline else "default"
-    explain = f"LAP: {lap_var:.1f}/{thresh_low:.1f} | HF: {hf_ratio:.3f} | {baseline_str}"
+    explain = f"LAP: {lap_var:.1f}/{thresh_low:.1f} | HF: {hf_ratio:.3f} | moire={moire_score:.3f} | light={screen_light_score:.3f} | {baseline_str}"
     if screen_replay_flag:
         explain += f" | ⚠ SCREEN_REPLAY (conf={screen_confidence:.0%}, moire={moire_score:.2f}, light={screen_light_score:.2f})"
     if suspicious:
         explain += f" — FLAGGED: {'; '.join(reasons)}"
+
+    # DEBUG: Write raw signal values to file for analysis
+    try:
+        import time as _t
+        _dbg_line = (f"{_t.time():.1f} | LAP={lap_var:.1f} DIST={distance_cm:.0f}cm "
+                     f"MOIRE={moire_score:.3f} LIGHT={screen_light_score:.3f} "
+                     f"HF={hf_ratio:.3f} REPLAY={screen_replay_flag} "
+                     f"SUSP={suspicious}\n")
+        _dbg_path = os.path.join(os.path.dirname(__file__), "logs", "texture_debug.log")
+        with open(_dbg_path, "a") as _df:
+            _df.write(_dbg_line)
+    except Exception:
+        pass
 
     return lap_var, suspicious, explain
 
