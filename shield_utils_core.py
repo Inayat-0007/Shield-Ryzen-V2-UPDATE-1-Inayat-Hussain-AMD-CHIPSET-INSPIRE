@@ -271,12 +271,12 @@ def compute_texture_score(
     screen_confidence = 0.0
     screen_signals = []  # Track signals for Layer 5 fusion
 
-    REFERENCE_TEXTURE = 350.0   # Real faces at 50cm score 200-600
+    REFERENCE_TEXTURE = 700.0   # Real faces produce 400-950 at 50cm (verified from screenshots)
     REFERENCE_DISTANCE = 50.0
 
     if distance_cm > 40:
         max_expected = REFERENCE_TEXTURE * (REFERENCE_DISTANCE / distance_cm) ** 2
-        max_allowed = max_expected * 3.5  # Large safety margin for real face variance
+        max_allowed = max_expected * 4.0  # 4x safety margin — real face variance is extreme
 
         if lap_var > max_allowed:
             screen_replay_flag = True
@@ -284,7 +284,7 @@ def compute_texture_score(
             screen_confidence = max(screen_confidence, sig)
             screen_signals.append(("physics", sig))
 
-    ABSOLUTE_TEXTURE_CAP = 800.0  # Real faces can reach 500+ at close range
+    ABSOLUTE_TEXTURE_CAP = 1500.0  # Real faces reach 950 at 46cm; screens produce 2000+
     if lap_var > ABSOLUTE_TEXTURE_CAP and not screen_replay_flag:
         screen_replay_flag = True
         sig = min((lap_var - ABSOLUTE_TEXTURE_CAP) / 500.0, 0.9)
