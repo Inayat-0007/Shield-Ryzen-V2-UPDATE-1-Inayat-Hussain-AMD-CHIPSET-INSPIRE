@@ -2,11 +2,16 @@
   "laplacian_mean": 117.4,
   "laplacian_std": 22.59,
   "recommended_threshold": 46.96,
+  "texture_floor": 35.0,
   "ear_baseline_mean": 0.28,
+  "ear_baseline_std": 0.03,
+  "recommended_ear_threshold": 0.205,
   "camera_resolution": [
     640,
     480
   ],
-  "calibration_timestamp": "2026-02-17T23:34:20",
-  "num_frames_captured": 100
+  "lighting_condition": "GOOD",
+  "calibration_timestamp": "2026-02-20T18:08:00",
+  "num_frames_captured": 100,
+  "avg_fps": 30.0
 }

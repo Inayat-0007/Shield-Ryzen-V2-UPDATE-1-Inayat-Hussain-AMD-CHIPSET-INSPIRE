@@ -1,0 +1,14 @@
+
+[SHIELD] Critical Error: [ONNXRuntimeError] : 7 : INVALID_PROTOBUF : Load model from models/shield_ryzen_int8.onnx failed:Protobuf parsing failed.
+Traceback (most recent call last):
+  File "C:\Users\moham\Videos\SHIELD RYZEN V2 UPDATE 1 INAYAT\start_shield.py", line 89, in main
+    engine = engine_cls(config)
+  File "C:\Users\moham\Videos\SHIELD RYZEN V2 UPDATE 1 INAYAT\shield_engine.py", line 305, in __init__
+    self.session = ort.InferenceSession(self.model_path, providers=providers)
+                   ~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\moham\AppData\Local\Programs\Python\Python313\Lib\site-packages\onnxruntime\capi\onnxruntime_inference_collection.py", line 504, in __init__
+    self._create_inference_session(providers, provider_options, disabled_optimizers)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\moham\AppData\Local\Programs\Python\Python313\Lib\site-packages\onnxruntime\capi\onnxruntime_inference_collection.py", line 599, in _create_inference_session
+    sess = C.InferenceSession(session_options, self._model_path, True, self._read_config_from_model)
+onnxruntime.capi.onnxruntime_pybind11_state.InvalidProtobuf: [ONNXRuntimeError] : 7 : INVALID_PROTOBUF : Load model from models/shield_ryzen_int8.onnx failed:Protobuf parsing failed.

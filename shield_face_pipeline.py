@@ -593,9 +593,26 @@ class ShieldFacePipeline:
         proj_matrix = np.hstack((rotation_mat, translation_vec))
         euler_angles = cv2.decomposeProjectionMatrix(proj_matrix)[6]
 
-        yaw = float(euler_angles[1, 0])
-        pitch = float(euler_angles[0, 0])
-        roll = float(euler_angles[2, 0])
+        pitch_raw = float(euler_angles[0, 0])
+        yaw_raw = float(euler_angles[1, 0])
+        roll_raw = float(euler_angles[2, 0])
+        
+        # NORMALIZE EULER ANGLES:
+        # cv2.decomposeProjectionMatrix can return angles in (-180, 180] range
+        # which causes near-frontal faces to show pitch=±179° instead of ~0°.
+        # We normalize to [-90, +90] which is the physically meaningful range
+        # for head pose estimation.
+        def _normalize_angle(angle: float) -> float:
+            """Normalize angle to [-90, +90] range."""
+            if angle > 90.0:
+                angle = angle - 180.0
+            elif angle < -90.0:
+                angle = angle + 180.0
+            return angle
+        
+        yaw = _normalize_angle(yaw_raw)
+        pitch = _normalize_angle(pitch_raw)
+        roll = _normalize_angle(roll_raw)
 
         return (
             round(yaw, 1),

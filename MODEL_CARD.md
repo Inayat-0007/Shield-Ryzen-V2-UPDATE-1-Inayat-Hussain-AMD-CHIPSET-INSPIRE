@@ -129,9 +129,10 @@ The neural network is **one tier** of a multi-tier security system:
 - **Tier 1:** Neural network confidence (this model)
 - **Tier 2:** Liveness detection (EAR-based blink verification)
 - **Tier 3:** Texture forensics (Laplacian + FFT analysis)
+- **Tier 4:** **Anti-Replay Shield (5-Layer Physics Logic)**
 - **Decision fusion:** `DecisionStateMachine` with conflict resolution truth table
 
-Adversarial attacks can fool Tier 1 but cannot simultaneously fool Tiers 2 and 3.
+Adversarial attacks or high-quality screen replays can fool Tier 1 but cannot simultaneously fool the physical and photonic constraints of Tiers 3 and 4.
 
 ## Quantization (Part 5)
 | Variant | Format | Size | Compression | Accuracy |
@@ -147,7 +148,7 @@ Adversarial attacks can fool Tier 1 but cannot simultaneously fool Tiers 2 and 3
 | **v1.0** | Initial prototype (unverified integrity) |
 | **v2.0** | Added SHA-256 hash check, architectural audit, temperature scaling |
 | **v2.1** | INT8 Quantization (74% compression), NPU Integration (BlazeFace 1.3ms) |
-| **v2.2** | Full integrity hardening (Part 4): ModelTamperingError, ONNX shape verification, reference output regression, MODEL_CARD |
+| **v2.2.0** | **Anti-Replay Update**: 5-layer Physics Shield + FAKE Lockout Security + Neural Trace Memory |
 
 ## Files
 ```

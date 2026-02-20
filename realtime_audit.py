@@ -72,7 +72,7 @@ with open(LOG_PATH, "r") as f:
                 frame_count += 1
                 faces = data.get("face_results", [])
                 fps = data.get("fps", 0)
-                timing = data.get("timing_breakdown", {})
+                timing = data.get("timing_breakdown", data.get("timing", {}))
                 
                 # Print every 3rd frame to avoid flooding
                 if frame_count % 3 != 0:
@@ -93,14 +93,23 @@ with open(LOG_PATH, "r") as f:
                     tex = fr.get("texture_score", 0)
                     tiers = fr.get("tier_results", ["?","?","?"])
                     plugins = fr.get("plugin_votes", [])
+                    adv = fr.get("advanced_info", {})
                     
                     # Main verdict line
                     t1_str = format_tier(str(tiers[0])) if len(tiers) > 0 else "?"
                     t2_str = format_tier(str(tiers[1])) if len(tiers) > 1 else "?"
                     t3_str = format_tier(str(tiers[2])) if len(tiers) > 2 else "?"
                     
+                    blinks = adv.get("blinks", 0)
+                    dist = adv.get("distance_cm", 0)
+                    face_age = adv.get("face_age_s", 0)
+                    head_pose = adv.get("head_pose", {})
+                    yaw = head_pose.get("yaw", 0)
+                    pitch = head_pose.get("pitch", 0)
+                    pattern = adv.get("blink_pattern_score", 0)
+                    
                     print(f"  Face #{fid} → {colorize(state)} │ Neural: {neural:.3f} │ EAR: {ear:.4f} ({ear_rel}) │ Tex: {tex:.1f}")
-                    print(f"           Tiers: [{t1_str}, {t2_str}, {t3_str}]")
+                    print(f"           Tiers: [{t1_str}, {t2_str}, {t3_str}] │ Blinks: {blinks} (pat:{pattern:.0%}) │ Dist: {dist:.0f}cm │ Age: {face_age:.0f}s │ Pose: Y{yaw:+.0f} P{pitch:+.0f}")
                     
                     # Plugin summary (compact)
                     plugin_parts = []

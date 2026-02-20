@@ -1,5 +1,11 @@
-
 # Shield-Ryzen V2 Changelog
+
+## V2.2.0 (The Anti-Replay Update - LATEST)
+### New Security Features
+*   **5-Layer Screen Detection**: Physics-based distance-texture cross-validation + Moiré grid analysis + Screen Light Emission detection.
+*   **FAKE Lockout Security**: Automatic 30-second lockout for faces confirmed FAKE to prevent state machine manipulation.
+*   **Neural Trace Memory**: Tracks historical confidence minima to prevent deepfake "recovery" after detection.
+*   **Flash Alerts**: Visual flashing red "!! SCREEN REPLAY ATTACK !!" overlay in HUD.
 
 ## V2.1.0 (Unified Release - NPU Optimized)
 ### New Features

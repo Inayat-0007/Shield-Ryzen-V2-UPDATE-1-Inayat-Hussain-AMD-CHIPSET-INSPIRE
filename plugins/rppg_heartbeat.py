@@ -37,20 +37,22 @@ class HeartbeatPlugin(ShieldPlugin):
     name = "heartbeat_rppg"
     tier = "biometric"
 
-    def __init__(self, buffer_seconds: float = 5.0, fps: float = 30.0):
-        self.fps = fps
-        self.buffer_size = int(buffer_seconds * fps)
+    def __init__(self, buffer_seconds: float = 5.0, fps: float = 15.0):
+        self.nominal_fps = fps
+        self.buffer_size = int(buffer_seconds * fps)  # 75 at 15fps
         self.green_means = deque(maxlen=self.buffer_size)
-        self.last_result = {"verdict": "UNCERTAIN", "confidence": 0.0, "bpm": 0}
+        self.timestamps = deque(maxlen=self.buffer_size)
+        self.last_result = {"verdict": "UNCERTAIN", "confidence": 0.0, "name": self.name, "explanation": "Initializing rPPG..."}
+        self._analysis_count = 0
 
     def analyze(self, face, frame: np.ndarray) -> dict:
         """
         Process frame for rPPG signal.
+        Uses actual timestamps for accurate sampling rate estimation.
         """
         try:
+            import time as _time
             # ROI: Forehead (stable skin region)
-            # Use landmarks if available for precise forehead extraction
-            # Fallback to bbox based crop
             x, y, w, h = face.bbox
             # Forehead is roughly top 25-35% of face height, center 50% width
             fh_h = int(h * 0.15)
@@ -59,7 +61,7 @@ class HeartbeatPlugin(ShieldPlugin):
             fh_w = int(w * 0.5)
             
             # Clamp to frame
-            rows, cols, _ = frame.shape
+            rows, cols = frame.shape[:2]
             fh_y = max(0, min(fh_y, rows))
             fh_h = max(1, min(fh_h, rows - fh_y))
             fh_x = max(0, min(fh_x, cols))
@@ -72,40 +74,47 @@ class HeartbeatPlugin(ShieldPlugin):
 
             # Mean of Green Channel (Index 1 in BGR)
             g_mean = np.mean(roi[:, :, 1])
+            now = _time.monotonic()
             self.green_means.append(g_mean)
+            self.timestamps.append(now)
 
-            # Need full buffer (5s) for valid FFT
-            if len(self.green_means) < self.buffer_size:
+            # Need at least 60 samples (~4s at 15fps) for valid FFT
+            MIN_SAMPLES = 60
+            if len(self.green_means) < MIN_SAMPLES:
+                progress = len(self.green_means)
                 return {
                     "verdict": "UNCERTAIN",
                     "confidence": 0.0,
                     "name": self.name,
-                    "explanation": f"Collecting rPPG data ({len(self.green_means)}/{self.buffer_size})"
+                    "explanation": f"Buffering rPPG ({progress}/{MIN_SAMPLES})",
+                    "metric_value": 0.0
                 }
 
+            # Estimate actual sampling rate from timestamps
+            ts_array = np.array(self.timestamps)
+            dt = np.diff(ts_array)
+            actual_fps = 1.0 / (np.median(dt) + 1e-10)
+            # Clamp to sane range
+            actual_fps = max(5.0, min(actual_fps, 60.0))
+
             # Process Signal
-            bpm, snr = self._compute_heart_rate_fft()
-            
-            # Logic: Valid Human BPM is 40-180 (0.66 - 3.0 Hz)
-            # SNR > 2.5 usually indicates strong periodic signal (real pulse)
-            # SNR < 1.5 indicates noise (replay/mask)
+            bpm, snr = self._compute_heart_rate_fft(actual_fps)
+            self._analysis_count += 1
             
             verdict = "UNCERTAIN"
             confidence = 0.0
             
             if 40 <= bpm <= 180 and snr > 2.0:
                 verdict = "REAL"
-                confidence = min(snr / 4.0, 1.0) # Map SNR 2.0-6.0 to conf 0.5-1.0
-                explanation = f"Heartbeat detected: {int(bpm)} BPM (Strong Signal)"
-            elif snr < 1.0:
-                # Very weak signal after full buffer — likely static/replay
-                # But still conservative: UNCERTAIN, not FAKE
-                # Only trust this as FAKE if multiple buffers confirm
+                confidence = min(snr / 4.0, 1.0)
+                explanation = f"Heartbeat detected: {int(bpm)} BPM (SNR {snr:.1f})"
+            elif snr < 1.0 and self._analysis_count > 5:
+                # Very weak signal after multiple analyses — likely static/replay
                 verdict = "UNCERTAIN"
                 confidence = 0.4
                 explanation = f"Weak rPPG signal (SNR {snr:.2f}) — inconclusive"
             else:
-                explanation = f"Noisy signal (BPM {int(bpm)}, SNR {snr:.2f})"
+                explanation = f"Analyzing (BPM {int(bpm)}, SNR {snr:.1f}, fps={actual_fps:.0f})"
 
             self.last_result = {
                 "verdict": verdict,
@@ -120,13 +129,12 @@ class HeartbeatPlugin(ShieldPlugin):
             return {"verdict": "ERROR", "confidence": 0.0, "name": self.name, "explanation": str(e)}
 
 
-    def _compute_heart_rate_fft(self):
-        """Standard FFT-based heart rate estimation."""
+    def _compute_heart_rate_fft(self, actual_fps=None):
+        """Standard FFT-based heart rate estimation with actual sampling rate."""
         data = np.array(self.green_means)
+        fps = actual_fps or self.nominal_fps
         
         # Detrend (remove slow drift light changes)
-        # Simple method: subtract rolling mean or linear fit
-        # Using linear detrend via numpy
         x = np.arange(len(data))
         fit = np.polyfit(x, data, 1)
         detrended = data - (fit[0] * x + fit[1])
@@ -138,7 +146,7 @@ class HeartbeatPlugin(ShieldPlugin):
         n = len(data)
         freqs = np.fft.rfft(windowed)
         magnitude = np.abs(freqs)
-        frequency_axis = np.fft.rfftfreq(n, d=1.0/self.fps)
+        frequency_axis = np.fft.rfftfreq(n, d=1.0/fps)
         
         # Bandpass mask (0.7 Hz to 3.0 Hz -> 42 to 180 BPM)
         mask = (frequency_axis >= 0.7) & (frequency_axis <= 3.0)
@@ -160,3 +168,4 @@ class HeartbeatPlugin(ShieldPlugin):
         
         bpm = peak_freq * 60.0
         return bpm, snr
+

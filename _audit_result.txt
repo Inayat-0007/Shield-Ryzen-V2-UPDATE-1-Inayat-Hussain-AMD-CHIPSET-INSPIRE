@@ -1,0 +1,220 @@
+REAL-TIME SNAPSHOT — 18587 total frames
+Showing LAST 12 frame entries:
+====================================================================================================
+
+STATE: FAKE         | FLAGS: ALERT:DEEPFAKE
+  Neural Conf:   0.918 (raw trust score)
+  EAR:           0.3211 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      67 cm
+  Head Pose:     Yaw=+18.6  Pitch=+19.3  Roll=+2.8
+  Face Age:      60.4s
+  Tiers:         [REAL , PASS , FAIL ]
+  Texture:       7.0
+  Physics Check: max_expected=73.3 | max_allowed=183.2 | actual=7.0 | ratio=0.04x
+  Tex Detail:    LAP: 7.0/14.0 | HF: 0.766 | adaptive baseline=35.0 — FLAGGED: Laplacian 7.0 < threshold 14.0
+    heartbeat_rppg           -> REAL       (0.64)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.8 | Latency: 96ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.917 (raw trust score)
+  EAR:           0.3011 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      67 cm
+  Head Pose:     Yaw=+18.0  Pitch=+18.5  Roll=+3.0
+  Face Age:      60.5s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       6.0
+  Physics Check: max_expected=72.6 | max_allowed=181.5 | actual=6.0 | ratio=0.03x
+  Tex Detail:    LAP: 6.0/14.0 | HF: 0.754 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: Laplacian 6.0 < threshold
+    heartbeat_rppg           -> REAL       (0.65)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.8 | Latency: 74ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: ALERT:DEEPFAKE
+  Neural Conf:   0.915 (raw trust score)
+  EAR:           0.3141 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      66 cm
+  Head Pose:     Yaw=+14.7  Pitch=+18.1  Roll=+2.8
+  Face Age:      60.6s
+  Tiers:         [REAL , PASS , PASS ]
+  Texture:       15.1
+  Physics Check: max_expected=75.1 | max_allowed=187.7 | actual=15.1 | ratio=0.08x
+  Tex Detail:    LAP: 15.1/14.0 | HF: 0.679 | adaptive baseline=35.0
+    heartbeat_rppg           -> REAL       (0.67)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.9 | Latency: 84ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: ALERT:DEEPFAKE
+  Neural Conf:   0.913 (raw trust score)
+  EAR:           0.3167 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      66 cm
+  Head Pose:     Yaw=+11.0  Pitch=+17.7  Roll=+2.3
+  Face Age:      60.7s
+  Tiers:         [REAL , PASS , PASS ]
+  Texture:       30.9
+  Physics Check: max_expected=74.4 | max_allowed=186.0 | actual=30.9 | ratio=0.17x
+  Tex Detail:    LAP: 30.9/14.0 | HF: 0.671 | adaptive baseline=35.0
+    heartbeat_rppg           -> REAL       (0.68)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.9 | Latency: 88ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: ALERT:DEEPFAKE
+  Neural Conf:   0.915 (raw trust score)
+  EAR:           0.3156 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      65 cm
+  Head Pose:     Yaw=+7.0  Pitch=+17.7  Roll=+1.7
+  Face Age:      60.8s
+  Tiers:         [REAL , PASS , PASS ]
+  Texture:       18.2
+  Physics Check: max_expected=76.5 | max_allowed=191.1 | actual=18.2 | ratio=0.10x
+  Tex Detail:    LAP: 18.2/14.0 | HF: 0.628 | adaptive baseline=35.0
+    heartbeat_rppg           -> REAL       (0.69)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.9 | Latency: 84ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.920 (raw trust score)
+  EAR:           0.2720 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      65 cm
+  Head Pose:     Yaw=+5.7  Pitch=+18.6  Roll=+2.1
+  Face Age:      60.9s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       31.5
+  Physics Check: max_expected=76.5 | max_allowed=191.1 | actual=31.5 | ratio=0.16x
+  Tex Detail:    LAP: 31.5/14.0 | HF: 0.623 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: SCREEN REPLAY (conf=40%,
+    heartbeat_rppg           -> REAL       (0.69)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.9 | Latency: 78ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.923 (raw trust score)
+  EAR:           0.2610 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      65 cm
+  Head Pose:     Yaw=-1.5  Pitch=+19.1  Roll=+1.7
+  Face Age:      61.0s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       29.0
+  Physics Check: max_expected=76.9 | max_allowed=192.3 | actual=29.0 | ratio=0.15x
+  Tex Detail:    LAP: 29.0/14.0 | HF: 0.624 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: SCREEN REPLAY (conf=40%,
+    heartbeat_rppg           -> REAL       (0.66)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.9 | Latency: 86ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.922 (raw trust score)
+  EAR:           0.2109 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      65 cm
+  Head Pose:     Yaw=-5.4  Pitch=+20.0  Roll=+3.5
+  Face Age:      61.1s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       50.1
+  Physics Check: max_expected=76.9 | max_allowed=192.3 | actual=50.1 | ratio=0.26x
+  Tex Detail:    LAP: 50.1/14.0 | HF: 0.644 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: SCREEN REPLAY (conf=40%,
+    heartbeat_rppg           -> REAL       (0.62)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.9 | Latency: 81ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.922 (raw trust score)
+  EAR:           0.1603 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      64 cm
+  Head Pose:     Yaw=-8.3  Pitch=+20.3  Roll=+3.5
+  Face Age:      61.2s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       64.8
+  Physics Check: max_expected=78.9 | max_allowed=197.1 | actual=64.8 | ratio=0.33x
+  Tex Detail:    LAP: 64.8/14.0 | HF: 0.660 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: SCREEN REPLAY (conf=40%,
+    heartbeat_rppg           -> REAL       (0.61)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 9.9 | Latency: 70ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.922 (raw trust score)
+  EAR:           0.2314 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      67 cm
+  Head Pose:     Yaw=-7.8  Pitch=+18.8  Roll=+2.5
+  Face Age:      61.3s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       70.9
+  Physics Check: max_expected=73.3 | max_allowed=183.2 | actual=70.9 | ratio=0.39x
+  Tex Detail:    LAP: 70.9/14.0 | HF: 0.681 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: SCREEN REPLAY (conf=40%,
+    heartbeat_rppg           -> REAL       (0.61)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 10.0 | Latency: 78ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.915 (raw trust score)
+  EAR:           0.1936 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      66 cm
+  Head Pose:     Yaw=-7.3  Pitch=+17.9  Roll=+2.4
+  Face Age:      61.4s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       72.0
+  Physics Check: max_expected=74.4 | max_allowed=186.0 | actual=72.0 | ratio=0.39x
+  Tex Detail:    LAP: 72.0/14.0 | HF: 0.688 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: SCREEN REPLAY (conf=40%,
+    heartbeat_rppg           -> REAL       (0.61)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 10.0 | Latency: 84ms
+----------------------------------------------------------------------------------------------------
+STATE: FAKE         | FLAGS: SCREEN_REPLAY | ALERT:SCREEN_REPLAY
+  Neural Conf:   0.911 (raw trust score)
+  EAR:           0.2111 (HIGH)
+  Blinks:        30 (src=BLENDSHAPES, pattern=100%)
+  Distance:      66 cm
+  Head Pose:     Yaw=-8.6  Pitch=+14.3  Roll=+3.5
+  Face Age:      61.5s
+  Tiers:         [FAKE , PASS , FAIL ]
+  Texture:       101.5
+  Physics Check: max_expected=74.4 | max_allowed=186.0 | actual=101.5 | ratio=0.55x
+  Tex Detail:    LAP: 101.5/14.0 | HF: 0.671 | adaptive baseline=35.0 | ⚠ SCREEN_REPLAY (conf=40%, moire=0.30, light=0.35) — FLAGGED: SCREEN REPLAY (conf=40%
+    heartbeat_rppg           -> REAL       (0.59)
+    skin_reflectance         -> REAL       (0.50)
+    frequency_analysis       -> UNCERTAIN  (0.35)
+    codec_forensics          -> REAL       (0.50)
+    adversarial_patch        -> REAL       (0.50)
+  FPS: 10.0 | Latency: 117ms
+----------------------------------------------------------------------------------------------------

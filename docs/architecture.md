@@ -3,6 +3,18 @@
 ## Overview
 Shield-Ryzen V2 is a real-time deepfake detection system optimized for AMD Ryzen AI NPUs. It employs a multi-layered defense strategy combining neural analysis, signal forensics, and biometric verification.
 
+## 🛡️ Anti-Replay Architecture (Physics Shield)
+The V2.2 update introduces a 5-layer physical verification system designed to catch screen-replay attacks (showing a phone/tablet to the webcam).
+
+| Layer | Method | Goal |
+|---|---|---|
+| **Layer 1** | **Adaptive Laplacian** | Standard sharpness/blur check using device-specific baseline. |
+| **Layer 2** | **Physics Cross-Validation** | Enforces inverse-square law: max texture sharpness $T \propto 1/D^2$. Screens violate this by being too sharp at distance. |
+| **Layer 3** | **Moiré Grid Analysis** | Detects periodic high-frequency patterns caused by screen pixel grid interference. |
+| **Layer 4** | **Light Emission** | Detects backlighting signatures (blue-shift, uniform brightness variance, narrow chrominance gamut). |
+| **Layer 5** | **Signal Fusion** | Combines weak signals from multiple layers to perform a majority-rule forensic verdict. |
+
+
 ## Core Components
 
 ### 1. Engine (`shield_engine.py`)

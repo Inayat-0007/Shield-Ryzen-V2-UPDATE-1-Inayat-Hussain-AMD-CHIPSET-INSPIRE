@@ -33,11 +33,16 @@ class FrequencyAnalyzerPlugin(ShieldPlugin):
 
     def analyze(self, face, frame: np.ndarray) -> dict:
         """
-        Analyze frequency domain fingerprints.
+        Analyze frequency domain fingerprints using LOG-MAGNITUDE ratio.
+        
+        Uses the same approach as shield_utils_core._compute_hf_energy_ratio():
+        log-magnitude comparison between high-frequency and low-frequency regions.
+        
+        This avoids the power-spectrum-ratio trap where real webcam faces produce
+        values like 0.0003 (far below any useful threshold).
         """
         try:
             # Use raw face crop (unnormalized uint8)
-            # face.face_crop_raw is BGR
             if face.face_crop_raw is None or face.face_crop_raw.size == 0:
                  return {
                     "verdict": "UNCERTAIN",
@@ -49,53 +54,55 @@ class FrequencyAnalyzerPlugin(ShieldPlugin):
             gray = cv2.cvtColor(face.face_crop_raw, cv2.COLOR_BGR2GRAY)
             h, w = gray.shape
             
-            # 2D FFT
-            f_transform = np.fft.fft2(gray)
+            if h < 16 or w < 16:
+                return {
+                    "verdict": "UNCERTAIN",
+                    "confidence": 0.0,
+                    "name": self.name,
+                    "explanation": "Face crop too small for FFT analysis"
+                }
+            
+            # 2D FFT with log-magnitude (consistent with core module)
+            f_transform = np.fft.fft2(gray.astype(np.float32))
             f_shift = np.fft.fftshift(f_transform)
-            magnitude = np.abs(f_shift)
-            power_spec = magnitude**2
+            log_mag = 20 * np.log(np.abs(f_shift) + 1e-10)
             
-            # Azimuthal Averaging / Radial Profile
-            # We skip full profile computation for speed, focusing on Band Energies.
-            
-            # Define High Frequency Region (Circular mask: outer 30%)
+            # Radial mask: inner 25% radius = low-frequency
             center_y, center_x = h // 2, w // 2
             y, x = np.ogrid[:h, :w]
-            dist_from_center = np.sqrt((x - center_x)**2 + (y - center_y)**2)
-            max_dist = np.min([h, w]) // 2
+            r_lf = int(min(h, w) * 0.25)
+            mask_lf = (y - center_y)**2 + (x - center_x)**2 <= r_lf**2
             
-            # High Freq Mask: r > 0.7 * max_dist
-            hf_mask = dist_from_center > (0.7 * max_dist)
+            # Log-magnitude energy ratio (HF mean / LF mean)
+            hf_energy = log_mag[~mask_lf].mean() if not np.all(mask_lf) else 0
+            lf_energy = log_mag[mask_lf].mean() + 1e-10
+            hf_ratio = hf_energy / lf_energy
             
-            total_energy = np.sum(power_spec)
-            hf_energy = np.sum(power_spec[hf_mask])
-            
-            hf_ratio = hf_energy / (total_energy + 1e-10)
-            
-            # GAN Artifact Check:
-            # GANs often have abnormally LOW high-freq energy (smoothness)
-            # OR specific spikes (checkerboard).
-            # Deepfakes (FaceSwap) often smooth details -> Low HF ratio.
-            
-            # Real faces (pores, hair) have significant HF energy.
-            # 0.15 threshold is empirical (from research on FaceForensics++)
+            # THRESHOLDS (calibrated from live webcam data):
+            # Real faces: HFER ~0.65-0.75 (balanced natural texture)
+            # GAN faces:  HFER <0.50 (suppressed high-freq, artificial smoothness)
+            # Screen replay: HFER >0.85 (Moiré patterns spike HF energy)
             
             verdict = "REAL"
             confidence = 0.6
-            explanation = f"Normal spectrum (HFER {hf_ratio:.4f})"
+            explanation = f"Normal spectrum (HFER {hf_ratio:.3f})"
             
-            if hf_ratio < 0.015: # Extremely smooth (GAN generated)
+            if hf_ratio < 0.45:  # Extremely smooth (GAN/diffusion generated)
                 verdict = "FAKE"
-                confidence = 0.8
-                explanation = f"Suppressed high-freq energy (HFER {hf_ratio:.4f} < 0.015)"
-            elif hf_ratio < 0.03: # Moderately smooth (could be webcam compression)
-                verdict = "SUSPICIOUS"
-                confidence = 0.5
-                explanation = f"Low high-freq energy (HFER {hf_ratio:.4f} < 0.03)"
-            elif hf_ratio > 0.50: # Extremely noisy (Noise injection?)
-                 verdict = "SUSPICIOUS" # Could be sensor noise
-                 confidence = 0.5
-                 explanation = f"Abnormal high-freq noise (HFER {hf_ratio:.4f})"
+                confidence = 0.80
+                explanation = f"Suppressed high-freq energy (HFER {hf_ratio:.3f} < 0.45)"
+            elif hf_ratio < 0.55:  # Moderately smooth (compression / distance)
+                verdict = "UNCERTAIN"
+                confidence = 0.40
+                explanation = f"Low high-freq energy (HFER {hf_ratio:.3f} < 0.55)"
+            elif hf_ratio > 0.90:  # Abnormal HF spike (screen Moiré)
+                verdict = "FAKE"
+                confidence = 0.70
+                explanation = f"Moiré-like HF spike (HFER {hf_ratio:.3f} > 0.90)"
+            elif hf_ratio > 0.80:  # Mild HF excess
+                verdict = "UNCERTAIN"
+                confidence = 0.35
+                explanation = f"Elevated HF energy (HFER {hf_ratio:.3f})"
 
             return {
                 "verdict": verdict,

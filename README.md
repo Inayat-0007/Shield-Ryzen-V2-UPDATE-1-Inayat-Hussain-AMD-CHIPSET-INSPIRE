@@ -10,11 +10,13 @@
 Shield-Ryzen V2 is an enterprise-grade deepfake detection engine specifically optimized for AMD Ryzen AI mobile processors. It combines neural analysis (XceptionNet) with biometric verification (Blink, Heartbeat) and forensic signal processing to detect sophisticated AI-generated content in real-time (<30ms per frame).
 
 ### Key Features
-- **Neural Engine**: Quantized INT8 XceptionNet running on NPU.
-- **Biometric Liveness**: Detects blink patterns and rPPG heartbeat signals.
-- **Signal Forensics**: Analyzes frequency domain (FFT) and codec artifacts (8x8 blocking).
-- **Enterprise Security**: Encrypted face re-identification and immutable audit trails.
-- **Accessibility**: WCAG 2.1 AA compliant HUD with audio alerts.
+- **Neural Engine**: Quantized INT8 XceptionNet optimized for AMD Ryzen AI NPUs.
+- **Anti-Replay Shield**: 5-layer detection system (Physics + Moiré + Light Emission) to block screen replay attacks.
+- **Biometric Liveness**: Detects deepfake-resistant blink patterns and rPPG heartbeat signals.
+- **Signal Forensics**: Frequency domain FFT analysis and codec artifact detection.
+- **Security Lockout**: Automatic FAKE lockout prevents state oscillation and brute-force bypass.
+- **Enterprise Security**: Encrypted face re-identification and immutable SHA-256 audit trails.
+- **Accessibility**: WCAG 2.1 AA compliant HUD with flashing attack warnings and audio alerts.
 
 ## 🚀 Quick Start
 

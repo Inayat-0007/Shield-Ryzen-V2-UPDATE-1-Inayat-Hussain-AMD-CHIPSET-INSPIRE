@@ -221,23 +221,30 @@ Face Crop (raw BGR) → Forehead ROI extraction → Laplacian Variance + FFT
 
 - Tier 3 Verdict: PASS if texture looks natural, FAIL if suspicious
 
-### Step 7: Decision State Machine Fusion (DecisionStateMachine)
+#### TIER 4 — Anti-Replay Shield (The V2.2 Physics Engine)
 
-All three tiers are fused using a truth table with temporal hysteresis:
+```
+Face Crop + Distance → 5-Layer Shield → Security Verdict
+```
 
-| Tier 1 (Neural) | Tier 2 (Liveness) | Tier 3 (Forensic) | → Final State       |
-|------------------|--------------------|--------------------|----------------------|
-| REAL             | PASS               | PASS               | ✅ VERIFIED          |
-| REAL             | FAIL               | PASS               | ⏳ WAIT_BLINK        |
-| REAL             | PASS               | FAIL               | ⚠️ SUSPICIOUS        |
-| FAKE             | any                | any                | 🔴 FAKE / HIGH_RISK  |
-| REAL             | FAIL               | FAIL               | ⚠️ SUSPICIOUS        |
+The V2.2 update adds a sophisticated **Anti-Replay Shield** specifically designed to block attackers showing a phone/tablet video to the webcam. It operates on 5 physical detection layers:
 
-Temporal Hysteresis: The state machine requires the same verdict for 5 consecutive frames
-before transitioning (prevents flickering). This is controlled by hysteresis_frames config.
+1. **Adaptive Laplacian (Layer 1):** Standard sharpness check calibrated to the specific webcam's sensor noise floor.
+2. **Physics Cross-Validation (Layer 2):** Enforces the **Inverse-Square Law of Optics**. A real face at 100cm cannot physically be as sharp as a 4K phone screen. If the face texture exceeds the physics-calculated limit for its distance, it is flagged.
+3. **Moiré Grid Analysis (Layer 3):** Uses FFT to find the periodic "pixel grid" signature of screen displays, which is never present on real human skin.
+4. **Screen Light Emission (Layer 4):** Detects backlighting anomalies:
+    - **Uniformity:** Screen light is too even compared to the 3D shadows on a real face.
+    - **Blue-Shift:** Backlights use LEDs with a distinctive blue spectral spike.
+    - **Chrominance Gamut:** Screen colors come from limited RGB subpixels, creating a synthetic color range.
+5. **Multi-Signal Fusion (Layer 5):** Combines weak indicators from all layers. If 2+ layers show "marginal" suspicion, the system triggers a confirmed **SCREEN_REPLAY** alert.
 
-Plugin-Aware Extension: The PluginAwareStateMachine downgrades Tier 3 to FAIL if any plugin
-votes FAKE, ensuring forensic plugins influence the final decision.
+### Step 7: Security State Machine & Lockout
+
+The final decision is handled by a state machine with a **Memory-Backed Lockout**:
+
+1. **State Transition:** Fusion of 4 Tiers + Plugin votes (REAL/FAKE/SUSPICIOUS).
+2. **FAKE Lockout:** If a face is confirmed FAKE for 5+ frames (e.g., a screen replay is caught), it is **LOCKED** into the FAKE/SUSPICIOUS state for 30 seconds. Even if the video improves, the system "remembers" the attack.
+3. **Neural Trace Memory:** Tracks the lowest confidence score ever seen for an identity. If it ever dropped into "Deepfake" territory (conf < 0.35), the identity is permanently marked as high-risk.
 
 ### Step 8: Plugin Analysis (Parts 7-8)
 
@@ -386,6 +393,7 @@ User's Face (webcam)
 | IOU = intersection_area / union_area                    | Face identity tracking      |
 | BPM = peak_frequency × 60                              | rPPG heartbeat estimation   |
 | Laplacian_var = var(∇²I)                                | Texture sharpness scoring   |
+| Max_Texture(D) = T_ref × (D_ref / D)²                  | Physics Anti-Replay limit   |
 
 ---
 
