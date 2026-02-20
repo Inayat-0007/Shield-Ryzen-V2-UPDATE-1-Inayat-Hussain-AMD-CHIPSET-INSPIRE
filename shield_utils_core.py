@@ -196,23 +196,25 @@ def compute_ear(
         yaw, pitch, roll = head_pose
         reliability = "HIGH"
 
-        # Pitch validation
-        if pitch > 25.0:
+        # Pitch validation (relaxed for natural webcam use)
+        if pitch > 30.0:
             # Looking down significantly — eyelids naturally lower
             reliability = "LOW"
-        elif pitch < -20.0:
+        elif pitch < -25.0:
             # Looking up significantly
             reliability = "MEDIUM"
 
         # Yaw validation + cosine correction
+        # Relaxed from 15/25 to 20/30 because most webcam users sit
+        # slightly off-center, causing unnecessary MEDIUM reliability
         abs_yaw = abs(yaw)
-        if abs_yaw > 25.0:
+        if abs_yaw > 30.0:
             # Extreme angle — EAR unreliable regardless of correction
             reliability = "LOW"
             # Still apply correction for best-effort value
             cos_yaw = max(0.3, math.cos(math.radians(abs_yaw)))
             ear = ear / cos_yaw
-        elif abs_yaw > 15.0:
+        elif abs_yaw > 20.0:
             # Moderate angle — apply cosine correction, mark MEDIUM
             if reliability == "HIGH":
                 reliability = "MEDIUM"
@@ -232,22 +234,15 @@ def compute_ear(
 def compute_texture_score(
     face_crop_raw: np.ndarray,
     device_baseline: Optional[float] = None,
+    distance_cm: float = 0.0,
 ) -> tuple[float, bool, str]:
-    """Enhanced texture analysis using forehead-ROI Laplacian + FFT.
+    """Enhanced texture analysis with 5-LAYER SCREEN REPLAY DETECTION.
 
-    FOREHEAD ROI EXTRACTION (more stable than full-face):
-      - rows 15%-35%, cols 25%-75% of face crop
-      - Compute Laplacian variance on this region ONLY
-
-    ADAPTIVE THRESHOLD:
-      - If device_baseline provided: threshold = device_baseline * 0.4
-      - If no baseline: threshold = 15.0 (default, with WARNING logged)
-
-    FREQUENCY ANALYSIS (screen / GAN detection):
-      - Compute FFT of forehead ROI grayscale
-      - Calculate high-frequency energy ratio
-      - GAN faces have suppressed high-freq energy
-      - Screens have Moiré patterns (unusual HF spikes)
+    Layer 1: Laplacian Variance (standard sharpness)
+    Layer 2: Physics-based distance-texture cross-validation
+    Layer 3: Moiré pattern detection (screen pixel grid interference)
+    Layer 4: Screen light emission detection (catches CLOSE-RANGE attacks)
+    Layer 5: Combined weak-signal fusion (2+ marginal signals = confirm)
 
     Returns:
         (laplacian_variance, is_suspicious, explanation)
@@ -263,59 +258,106 @@ def compute_texture_score(
     if forehead.size == 0:
         forehead = gray
 
-    # Laplacian variance (sharpness measure)
+    # ── LAYER 1: Laplacian Variance ──
     lap_var = float(cv2.Laplacian(forehead, cv2.CV_64F).var())
 
-    # Adaptive threshold
     if device_baseline and device_baseline > 0:
-        thresh = device_baseline * 0.4
+        thresh_low = device_baseline * 0.4
     else:
-        thresh = 15.0  # Conservative default for unknown cameras
-        _log.debug("No device baseline — using default Laplacian threshold %.1f", thresh)
+        thresh_low = 15.0
 
-    # FFT frequency analysis
+    # ── LAYER 2: Distance-Texture Physics Check ──
+    screen_replay_flag = False
+    screen_confidence = 0.0
+    screen_signals = []  # Track signals for Layer 5 fusion
+
+    REFERENCE_TEXTURE = 130.0
+    REFERENCE_DISTANCE = 50.0
+
+    if distance_cm > 40:
+        max_expected = REFERENCE_TEXTURE * (REFERENCE_DISTANCE / distance_cm) ** 2
+        max_allowed = max_expected * 2.5
+
+        if lap_var > max_allowed:
+            screen_replay_flag = True
+            sig = min((lap_var / max_allowed) / 3.0, 1.0)
+            screen_confidence = max(screen_confidence, sig)
+            screen_signals.append(("physics", sig))
+
+    ABSOLUTE_TEXTURE_CAP = 250.0
+    if lap_var > ABSOLUTE_TEXTURE_CAP and not screen_replay_flag:
+        screen_replay_flag = True
+        sig = min((lap_var - ABSOLUTE_TEXTURE_CAP) / 200.0, 0.9)
+        screen_confidence = max(screen_confidence, sig)
+        screen_signals.append(("abs_cap", sig))
+
+    # ── LAYER 3: Frequency Analysis + Moiré Detection ──
     hf_ratio = _compute_hf_energy_ratio(forehead)
+    moire_score = _detect_moire_pattern(forehead)
 
-    # COMBINED SUSPICION LOGIC:
-    # 1. Low Laplacian variance = too smooth (screen replay / blur)
-    # 2. Low HF ratio = GAN spectral gaps
-    # 3. Very high HF ratio = Moiré pattern from screen
-    suspicious = (lap_var < thresh) or (hf_ratio < 0.08)
+    # Lowered from 0.6 → 0.25: phone screens at close range score 0.25-0.35
+    if moire_score > 0.25:
+        sig = min(moire_score * 1.5, 1.0)
+        screen_signals.append(("moire", sig))
+        if moire_score > 0.45:
+            screen_replay_flag = True
+            screen_confidence = max(screen_confidence, sig)
+
+    # ── LAYER 4: Screen Light Emission Detection ──
+    # Screens EMIT light (backlit LCD/OLED), creating 3 anomalies:
+    #   A) Abnormally UNIFORM brightness across the face
+    #   B) Narrow skin chrominance range (synthetic colors)
+    #   C) Blue/green color cast from LED backlighting
+    screen_light_score = _detect_screen_light(face_crop_raw)
+    if screen_light_score > 0.3:
+        screen_signals.append(("screen_light", screen_light_score))
+        if screen_light_score > 0.55:
+            screen_replay_flag = True
+            screen_confidence = max(screen_confidence, screen_light_score)
+
+    # ── LAYER 5: Combined Weak-Signal Fusion ──
+    # Multiple marginal signals together confirm screen replay.
+    # Any 2+ signals with strength > 0.2 = screen confirmed.
+    active_signals = [(n, s) for n, s in screen_signals if s > 0.2]
+    if len(active_signals) >= 2 and not screen_replay_flag:
+        combined = sum(s for _, s in active_signals) / len(active_signals)
+        if combined > 0.3:
+            screen_replay_flag = True
+            screen_confidence = max(screen_confidence, combined)
+            screen_signals.append(("fusion", combined))
+
+    # ── COMBINED SUSPICION LOGIC ──
+    suspicious = False
+    reasons = []
+
+    if lap_var < thresh_low:
+        suspicious = True
+        reasons.append(f"Laplacian {lap_var:.1f} < threshold {thresh_low:.1f}")
+
+    if hf_ratio < 0.08:
+        suspicious = True
+        reasons.append(f"HF ratio {hf_ratio:.3f} < 0.08 (spectral anomaly)")
+
+    if screen_replay_flag:
+        suspicious = True
+        sig_str = "+".join(f"{n}={s:.0%}" for n, s in screen_signals)
+        reasons.append(f"SCREEN REPLAY (conf={screen_confidence:.0%}, signals=[{sig_str}])")
 
     # Build explanation string
-    if device_baseline and device_baseline > 0:
-        explain = (
-            f"LAP: {lap_var:.1f}/{thresh:.1f} | "
-            f"HF: {hf_ratio:.3f} | "
-            f"adaptive baseline={device_baseline}"
-        )
-    else:
-        explain = f"LAP: {lap_var:.1f}/{thresh:.1f} | HF: {hf_ratio:.3f}"
-
+    baseline_str = f"adaptive baseline={device_baseline}" if device_baseline else "default"
+    explain = f"LAP: {lap_var:.1f}/{thresh_low:.1f} | HF: {hf_ratio:.3f} | {baseline_str}"
+    if screen_replay_flag:
+        explain += f" | ⚠ SCREEN_REPLAY (conf={screen_confidence:.0%}, moire={moire_score:.2f}, light={screen_light_score:.2f})"
     if suspicious:
-        reasons = []
-        if lap_var < thresh:
-            reasons.append(f"Laplacian {lap_var:.1f} < threshold {thresh:.1f}")
-        if hf_ratio < 0.08:
-            reasons.append(f"HF ratio {hf_ratio:.3f} < 0.08 (spectral anomaly)")
         explain += f" — FLAGGED: {'; '.join(reasons)}"
 
     return lap_var, suspicious, explain
 
 
 def _compute_hf_energy_ratio(gray_roi: np.ndarray) -> float:
-    """Compute high-frequency energy ratio via FFT for forensic analysis.
-
-    Compares energy in the outer spectral ring (high-frequency) to
-    the inner region (low-frequency). Natural images have balanced
-    energy distribution; GAN-generated or blurred images show
-    suppressed high frequencies.
-
-    Returns:
-        Ratio in [0.0, 1.0+]. Higher = more high-frequency content.
-    """
+    """Compute high-frequency energy ratio via FFT for forensic analysis."""
     if gray_roi.size < 16:
-        return 0.5  # Fallback for tiny ROI
+        return 0.5
 
     f = np.fft.fft2(gray_roi.astype(np.float32))
     fshift = np.fft.fftshift(f)
@@ -331,6 +373,195 @@ def _compute_hf_energy_ratio(gray_roi: np.ndarray) -> float:
     lf_energy = mag[mask_lf].mean() + 1e-10
 
     return hf_energy / lf_energy
+
+
+def _detect_moire_pattern(gray_roi: np.ndarray) -> float:
+    """Detect Moiré interference patterns from screen pixel grids.
+
+    Screens have regular pixel grids that create periodic frequency
+    peaks when viewed through a camera lens. Real skin has NO periodic
+    spatial patterns.
+
+    Method:
+      1. Compute 2D FFT magnitude spectrum
+      2. Build radial profile (energy vs spatial frequency)
+      3. Look for periodic spikes in the radial profile
+      4. Score the periodicity using autocorrelation of the radial profile
+
+    Returns:
+        Moiré score in [0.0, 1.0]. >0.6 = likely screen replay.
+    """
+    if gray_roi.size < 64 or min(gray_roi.shape) < 16:
+        return 0.0
+
+    try:
+        # FFT
+        f = np.fft.fft2(gray_roi.astype(np.float32))
+        fshift = np.fft.fftshift(f)
+        mag = np.abs(fshift)
+
+        h, w = gray_roi.shape
+        cy, cx = h // 2, w // 2
+        max_r = min(cy, cx)
+
+        # Build radial profile
+        radial_bins = max_r
+        profile = np.zeros(radial_bins)
+        counts = np.zeros(radial_bins)
+
+        y_coords, x_coords = np.mgrid[:h, :w]
+        r_map = np.sqrt((x_coords - cx)**2 + (y_coords - cy)**2).astype(int)
+
+        for r in range(radial_bins):
+            mask = r_map == r
+            if np.any(mask):
+                profile[r] = mag[mask].mean()
+                counts[r] = np.sum(mask)
+
+        # Normalize and analyze profile for periodic peaks
+        # Remove DC component and very low frequencies
+        if radial_bins < 10:
+            return 0.0
+
+        profile_detrended = profile[3:]  # Skip DC + low-freq
+        if len(profile_detrended) < 8:
+            return 0.0
+
+        # Normalize
+        p_mean = profile_detrended.mean()
+        if p_mean < 1e-6:
+            return 0.0
+        p_norm = profile_detrended / p_mean
+
+        # Detect peaks: values > 2× mean indicate periodic structure
+        peaks = p_norm > 2.0
+        n_peaks = np.sum(peaks)
+        peak_ratio = n_peaks / len(p_norm)
+
+        # Autocorrelation of radial profile (periodic signals have high autocorrelation)
+        profile_centered = p_norm - p_norm.mean()
+        autocorr = np.correlate(profile_centered, profile_centered, mode='full')
+        autocorr = autocorr[len(autocorr)//2:]  # Keep positive lags only
+        if autocorr[0] > 0:
+            autocorr = autocorr / autocorr[0]  # Normalize
+
+        # Find periodicity: look for secondary peaks in autocorrelation
+        secondary_peaks = 0
+        for i in range(3, min(len(autocorr) - 1, 30)):
+            if autocorr[i] > autocorr[i-1] and autocorr[i] > autocorr[i+1] and autocorr[i] > 0.15:
+                secondary_peaks += 1
+
+        # Score: combine peak count and autocorrelation periodicity
+        moiré_score = 0.0
+        if peak_ratio > 0.1:   # Many spectral peaks
+            moiré_score += 0.3
+        if peak_ratio > 0.2:
+            moiré_score += 0.2
+        if secondary_peaks >= 2:  # Periodic structure in autocorrelation
+            moiré_score += 0.3
+        if secondary_peaks >= 4:
+            moiré_score += 0.2
+
+        return min(moiré_score, 1.0)
+
+    except Exception:
+        return 0.0
+
+
+def _detect_screen_light(face_crop_bgr: np.ndarray) -> float:
+    """Detect screen light emission characteristics.
+
+    Screens emit their own light (backlit LCD/OLED), creating 3 physical
+    anomalies that real faces lit by ambient light don't have:
+
+    Signal A: BRIGHTNESS UNIFORMITY
+      - Screen backlight is spatially uniform → face brightness varies little
+      - Real faces: highlights on nose/forehead, shadows under chin/eyes
+      - Metric: coefficient of variation (std/mean) of face luminance
+      - Real face CV: 0.25-0.55 (high variance from 3D face geometry)
+      - Screen face CV: 0.08-0.18 (flat, uniform backlight)
+
+    Signal B: CHROMINANCE RANGE
+      - Screen RGB subpixels produce a narrower color gamut than reflected light
+      - Real skin has rich chrominance variation (blood flow, melanin patches)
+      - Metric: standard deviation of Cr and Cb channels in YCrCb space
+      - Real face: Cr_std > 8, Cb_std > 6
+      - Screen face: Cr_std < 6, Cb_std < 5
+
+    Signal C: BLUE CHANNEL BIAS
+      - LED backlights (especially white LEDs) emit more blue light
+      - This creates a measurable blue shift in the face region
+      - Metric: blue_channel_mean / green_channel_mean ratio
+      - Real face: B/G ≈ 0.75-0.90 (warm skin tone)
+      - Screen face: B/G ≈ 0.88-1.05 (blue-shifted backlight)
+
+    Returns:
+        Screen light score in [0.0, 1.0]. >0.55 = likely screen.
+    """
+    if face_crop_bgr is None or face_crop_bgr.size == 0:
+        return 0.0
+
+    try:
+        h, w = face_crop_bgr.shape[:2]
+        if h < 20 or w < 20:
+            return 0.0
+
+        # Use center 60% of face crop (avoid border artifacts)
+        y1, y2 = int(h * 0.2), int(h * 0.8)
+        x1, x2 = int(w * 0.2), int(w * 0.8)
+        center = face_crop_bgr[y1:y2, x1:x2]
+
+        # ── Signal A: Brightness Uniformity ──
+        gray_center = cv2.cvtColor(center, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        mean_brightness = gray_center.mean()
+        if mean_brightness < 10:  # Too dark to analyze
+            return 0.0
+        cv_brightness = gray_center.std() / mean_brightness  # coefficient of variation
+
+        # Score: lower CV = more uniform = more likely screen
+        # Real face: CV 0.25-0.55 → score 0.0
+        # Screen:    CV 0.08-0.18 → score 0.3-0.5
+        brightness_score = 0.0
+        if cv_brightness < 0.22:
+            brightness_score = max(0.0, (0.22 - cv_brightness) / 0.14)  # 0.22→0, 0.08→1.0
+            brightness_score = min(brightness_score, 1.0)
+
+        # ── Signal B: Chrominance Range ──
+        ycrcb = cv2.cvtColor(center, cv2.COLOR_BGR2YCrCb)
+        cr_std = float(ycrcb[:, :, 1].astype(np.float32).std())
+        cb_std = float(ycrcb[:, :, 2].astype(np.float32).std())
+
+        # Score: narrower chrominance = more likely screen
+        chroma_score = 0.0
+        if cr_std < 8.0:
+            chroma_score += max(0.0, (8.0 - cr_std) / 5.0) * 0.5
+        if cb_std < 6.0:
+            chroma_score += max(0.0, (6.0 - cb_std) / 4.0) * 0.5
+        chroma_score = min(chroma_score, 1.0)
+
+        # ── Signal C: Blue Channel Bias ──
+        b_mean = float(center[:, :, 0].astype(np.float32).mean())
+        g_mean = float(center[:, :, 1].astype(np.float32).mean())
+        if g_mean < 10:
+            bg_ratio = 0.85  # neutral fallback
+        else:
+            bg_ratio = b_mean / g_mean
+
+        # Score: B/G > 0.92 = blue-shifted (likely screen backlight)
+        blue_score = 0.0
+        if bg_ratio > 0.92:
+            blue_score = min((bg_ratio - 0.92) / 0.15, 1.0)  # 0.92→0, 1.07→1.0
+
+        # ── Combined screen light score ──
+        # Weight: brightness uniformity most reliable, then chroma, then blue
+        total = (brightness_score * 0.45 +
+                 chroma_score * 0.35 +
+                 blue_score * 0.20)
+
+        return min(total, 1.0)
+
+    except Exception:
+        return 0.0
 
 
 # ===================================================================
@@ -632,7 +863,7 @@ class DecisionStateMachine:
         self._total_transitions = 0
         self._rolling_history: deque = deque(maxlen=300)  # 10 sec at 30 FPS
 
-    def update(self, t1, t2, t3) -> str:
+    def update(self, t1, t2, t3, **kwargs) -> str:
         """Apply truth table fusion + hysteresis.
 
         Accepts both string-based (from engine) and TierResult (from
@@ -823,10 +1054,15 @@ class BlinkTracker:
                     elif self._in_blink and not is_closed:
                         self._in_blink = False
                         duration = timestamp - self._blink_start_time
-                        if 0.03 < duration < 0.50:
+                        # Real blinks: 100-400ms. Reject <60ms (noise) and >500ms (long close)
+                        if 0.06 < duration < 0.50:
                             self.blink_count += 1
                             self.event_times.append(timestamp)
                             detected = True
+                    elif self._in_blink:
+                        # Safety: if stuck in blink for >1 second, auto-reset
+                        if (timestamp - self._blink_start_time) > 1.0:
+                            self._in_blink = False
 
                 return {
                     "blink_detected": detected,
@@ -864,13 +1100,17 @@ class BlinkTracker:
                 if ear > thresh_open:
                     self._in_blink = False
                     duration = timestamp - self._blink_start_time
-                    is_valid_duration = 0.03 < duration < 0.50
+                    # Real blinks: 100-400ms. Reject <60ms (noise) and >500ms (long close)
+                    is_valid_duration = 0.06 < duration < 0.50
                     is_valid_depth = self._blink_peak_ear < (self.open_state_ear * 0.70)
 
                     if is_valid_duration and is_valid_depth:
                         self.blink_count += 1
                         self.event_times.append(timestamp)
                         detected = True
+                elif (timestamp - self._blink_start_time) > 1.0:
+                    # Safety: if stuck in blink for >1 second, auto-reset
+                    self._in_blink = False
         else:
             # LOW reliability — abort to avoid false positives
             if self._in_blink:

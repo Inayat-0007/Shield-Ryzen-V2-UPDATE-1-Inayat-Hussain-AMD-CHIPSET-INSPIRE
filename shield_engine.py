@@ -592,7 +592,8 @@ class ShieldEngine:
                 self.face_states[fid] = {
                     "sm": PluginAwareStateMachine(self.hysteresis),
                     "blink": BlinkTracker(),
-                    "neural_history": deque(maxlen=5) # for smoothing if needed
+                    "neural_history": deque(maxlen=5), # for smoothing if needed
+                    "first_seen": time.monotonic(),     # grace period tracking
                 }
             
             state_ctx = self.face_states[fid]
@@ -608,12 +609,17 @@ class ShieldEngine:
             calibrated = self.calibrator.calibrate(raw_output)
             # calibrated is [fake_prob, real_prob]
             neural_verdict = "REAL" if calibrated[1] > calibrated[0] else "FAKE"
-            raw_neural_conf = float(max(calibrated))
+            # Track real_prob as the confidence metric (trust score)
+            # This way confidence always means "how real is this face"
+            # High = likely real, Low = likely fake — consistent with HUD display
+            raw_real_prob = float(calibrated[1])
             
             # Temporal smoothing: 5-frame rolling average to reduce jitter
             # Raw confidence can swing 30%+ frame-to-frame due to face angle/lighting
-            state_ctx["neural_history"].append(raw_neural_conf)
+            state_ctx["neural_history"].append(raw_real_prob)
             neural_confidence = sum(state_ctx["neural_history"]) / len(state_ctx["neural_history"])
+            # Clamp to valid probability range [0.0, 1.0]
+            neural_confidence = max(0.0, min(1.0, neural_confidence))
 
             # 2d: Liveness check (Part 3)
             # compute_ear requires (landmarks, eye_indices, head_pose, is_frontal)
@@ -629,9 +635,18 @@ class ShieldEngine:
             # Update blink tracker
             blink_info = state_ctx["blink"].update(ear, ts, reliability=ear_reliability, blendshapes=face.blendshapes)
             
-            # 2e: Texture check (Part 3)
+            # 2e: Distance estimation (BEFORE texture — needed for screen detection)
+            distance_cm = self._estimate_distance(face.bbox, frame.shape)
+            clamped_dist = max(0.0, min(distance_cm, 500.0))
+            
+            # 2f: Texture check with SCREEN REPLAY DETECTION (Part 3)
+            # Pass distance for physics-based screen detection
+            tex_baseline = self._device_baseline.get(
+                "texture_floor",
+                self._device_baseline.get("recommended_threshold", 10.0)
+            )
             tex_score, tex_suspicious, tex_explain = compute_texture_score(
-                face.face_crop_raw, self._device_baseline.get("texture_floor", 10.0))
+                face.face_crop_raw, tex_baseline, distance_cm=clamped_dist)
 
             # 2f: Plugin votes (Parts 7-8)
             # Skip expensive plugins for small/distant faces to preserve FPS
@@ -655,7 +670,7 @@ class ShieldEngine:
 
             # 2g: Fuse ALL decisions (Part 3 state machine)
             tier1 = neural_verdict
-            # Tier 2 (Liveness): PASS if blinks detected OR wait
+            # Tier 2 (Liveness): PASS if blinks detected OR in grace period
             # BlinkTracker returns blink count. 
             # If reliability is LOW (occlusion/angle), we can't trust EAR.
             # DecisionStateMachine logic:
@@ -663,47 +678,134 @@ class ShieldEngine:
             #   TIER 2 = Liveness (Blink/rPPG)
             #   TIER 3 = Texture/Forensics
             
-            # Mapping blink status to Tier 2 verdict
-            # A rigorous check would require >0 blinks over time window using BlinkTracker
-            tier2 = "PASS" # Default optimistic if no blinks yet but reliable
-            if ear_reliability == "LOW":
-                tier2 = "FAIL" # Or UNKNOWN? Stick to FAIL/PASS for SM inputs
+            # Grace period: Give the user 1.5 seconds to produce a natural blink
+            # Reduced from 3.0s — screen replay attacks exploit long grace periods.
+            face_age = time.monotonic() - state_ctx.get("first_seen", time.monotonic())
+            BLINK_GRACE_PERIOD = 1.5  # seconds (reduced for faster attack detection)
+            
+            if blink_info["count"] > 0:
+                tier2 = "PASS"  # Confirmed blink — liveness proven (permanent)
+            elif face_age < BLINK_GRACE_PERIOD:
+                tier2 = "PASS"  # Grace period — assume live until proven otherwise
+            elif ear_reliability == "LOW":
+                tier2 = "FAIL"  # Unreliable after grace period — can't assess liveness
             else:
-                # Only PASS if we have confirmed blinks, otherwise WAIT_BLINK state handles it
-                # The SM handles WAIT logic internally often, but inputs are VERDICTS.
-                # Let's trust BlinkTracker's 'is_blinking' for immediate state, 
-                # but long term liveness requires blink COUNT > 0.
-                if blink_info["count"] > 0:
-                    tier2 = "PASS" 
-                else:
-                    tier2 = "FAIL" # Will drive SM to WAIT_BLINK if Neural is REAL
+                tier2 = "FAIL"  # No blinks after grace period — suspicious
 
-            tier3 = "PASS" if not tex_suspicious else "FAIL"
+            # EAR ANOMALY CHECK: AI avatar eyes are unnaturally wide-open
+            # Real human resting EAR is typically 0.20-0.35.
+            # AI avatars with animated wide eyes show EAR > 0.40 persistently.
+            EAR_ANOMALY_THRESHOLD = 0.40
+            ear_anomaly = False
+            if ear > EAR_ANOMALY_THRESHOLD and ear_reliability in ("HIGH", "MEDIUM"):
+                # Track consecutive high-EAR frames
+                state_ctx.setdefault("high_ear_count", 0)
+                state_ctx["high_ear_count"] += 1
+                # If high EAR persists for >10 frames, flag as anomaly
+                if state_ctx["high_ear_count"] > 10:
+                    ear_anomaly = True
+            else:
+                state_ctx["high_ear_count"] = 0
+            
+            # SCREEN REPLAY OVERRIDE: If texture analysis detects screen replay,
+            # override neural verdict. Physical evidence trumps neural network.
+            screen_detected = "SCREEN_REPLAY" in tex_explain
+            
+            if screen_detected:
+                tier1 = "FAKE"  # Override neural — physical evidence is conclusive
+                tier3 = "FAIL"
+            elif ear_anomaly:
+                # Wide-open eyes alone aren't conclusive but reduce trust
+                tier3 = "FAIL"  # Mark forensic as suspicious
+            else:
+                tier3 = "PASS" if not tex_suspicious else "FAIL"
 
             # Update State Machine
             state = state_ctx["sm"].update(
                 tier1, tier2, tier3,
                 plugin_votes=plugin_votes
             )
+            
+            # ── FAKE LOCKOUT MECHANISM ──
+            # Once confirmed FAKE for 5+ consecutive frames, lock out 
+            # promotion to VERIFIED for 30 seconds. Prevents oscillation.
+            if state in ("FAKE", "CRITICAL"):
+                state_ctx.setdefault("fake_streak", 0)
+                state_ctx["fake_streak"] += 1
+                if state_ctx["fake_streak"] >= 5:
+                    state_ctx["fake_lockout_until"] = time.monotonic() + 30.0
+            else:
+                state_ctx["fake_streak"] = 0
+            
+            # Track neural confidence minimum — if it ever drops very low,
+            # this face has shown deepfake characteristics
+            state_ctx.setdefault("neural_min", 1.0)
+            state_ctx["neural_min"] = min(state_ctx["neural_min"], neural_confidence)
+            
+            # Check if currently in fake lockout
+            fake_locked = time.monotonic() < state_ctx.get("fake_lockout_until", 0)
+            neural_ever_suspicious = state_ctx["neural_min"] < 0.35
+            
+            # VERIFIED PROMOTION: If REAL + blinks confirmed + tracked >5s
+            # This provides the highest trust level for continuously verified faces
+            VERIFIED_MIN_AGE = 5.0  # seconds of continuous tracking
+            VERIFIED_MIN_BLINKS = 1  # at least 1 natural blink
+            VERIFIED_MIN_CONFIDENCE = 0.6  # neural trust above 60%
+            
+            # Block promotion if in fake lockout or if neural was ever very suspicious
+            can_promote = (not fake_locked and not neural_ever_suspicious
+                          and not screen_detected and not ear_anomaly)
+            
+            if (state == "REAL"
+                and blink_info["count"] >= VERIFIED_MIN_BLINKS
+                and face_age >= VERIFIED_MIN_AGE
+                and neural_confidence >= VERIFIED_MIN_CONFIDENCE
+                and not tex_suspicious
+                and can_promote):
+                state = "VERIFIED"
+                state_ctx["sm"].state = "VERIFIED"
+            
+            # If in fake lockout and state is trying to go REAL, force SUSPICIOUS
+            if fake_locked and state in ("REAL", "VERIFIED"):
+                state = "SUSPICIOUS"
+                state_ctx["sm"].state = "SUSPICIOUS"
 
+            # Clamp values to prevent garbage/NaN display
+            clamped_ear = max(0.0, min(round(ear, 4), 1.0))
+            clamped_tex = max(0.0, min(tex_score, 999.9))
+            clamped_conf = max(0.0, min(neural_confidence, 1.0))
+            # distance_cm and clamped_dist already computed above (before texture)
+            
+            # Head pose for audit trail
+            yaw, pitch, roll = face.head_pose if face.head_pose else (0.0, 0.0, 0.0)
+            
             res = FaceResult(
                 face_id=fid,
                 bbox=face.bbox,
                 landmarks=face.landmarks,
                 state=state,
-                confidence=neural_confidence, # Default to neural
-                neural_confidence=neural_confidence,
-                ear_value=ear,
+                confidence=clamped_conf,
+                neural_confidence=clamped_conf,
+                ear_value=clamped_ear,
                 ear_reliability=ear_reliability,
-                texture_score=min(tex_score, 999.9),  # Clamp for sane display
+                texture_score=clamped_tex,
                 texture_explanation=tex_explain,
                 tier_results=(tier1, tier2, tier3),
                 plugin_votes=plugin_votes,
                 advanced_info={
                     "blinks": blink_info.get("count", 0),
+                    "blink_source": blink_info.get("source", "?"),
+                    "blink_baseline": blink_info.get("baseline", 0),
+                    "blink_pattern_score": blink_info.get("pattern_score", 0.5),
+                    "ear_value": clamped_ear,
+                    "ear_reliability": ear_reliability,
+                    "ear_anomaly": ear_anomaly,
                     "tracker_id": fid,
-                    "distance_cm": self._estimate_distance(face.bbox, frame.shape),
-                    "face_alert": "DEEPFAKE" if state in ("FAKE", "CRITICAL") else "",
+                    "distance_cm": clamped_dist,
+                    "head_pose": {"yaw": round(yaw, 1), "pitch": round(pitch, 1), "roll": round(roll, 1)},
+                    "face_alert": "SCREEN_REPLAY" if screen_detected else ("DEEPFAKE" if state in ("FAKE", "CRITICAL") else ""),
+                    "screen_replay": screen_detected,
+                    "face_age_s": round(face_age, 1),
                 }
             )
             face_results.append(res)

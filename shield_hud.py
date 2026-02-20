@@ -224,6 +224,7 @@ class ShieldHUD:
 
         # ── State badge — positioned ABOVE the face, clamped to stay on screen ──
         conf = face.neural_confidence if hasattr(face, 'neural_confidence') else 0
+        # Display confidence as trust score: >50% = REAL (shown green), <50% = FAKE (shown red)
         badge_text = f" {info['label']}  {conf:.0%} "
 
         (tw, th), _ = cv2.getTextSize(badge_text, cv2.FONT_HERSHEY_DUPLEX, 0.6, 2)
@@ -244,6 +245,28 @@ class ShieldHUD:
             cx, cy = x + bw // 2, y + bh // 2
             pulse_r = int(max(bw, bh) * 0.55 + 4 * abs(math.sin(time.monotonic() * 2)))
             cv2.circle(frame, (cx, cy), pulse_r, color, 1, cv2.LINE_AA)
+
+        # ── SCREEN REPLAY ATTACK WARNING ──
+        adv = face.advanced_info if hasattr(face, 'advanced_info') and face.advanced_info else {}
+        if adv.get("screen_replay", False):
+            # Flashing red warning below face
+            if self._alert_flash % 20 < 14:  # Flash on/off
+                warn_text = "!! SCREEN REPLAY ATTACK !!"
+                (wt2, ht2), _ = cv2.getTextSize(warn_text, cv2.FONT_HERSHEY_DUPLEX, 0.55, 2)
+                warn_x = x + (bw - wt2) // 2
+                warn_y = min(y + bh + 30, frame.shape[0] - 10)
+                # Dark background
+                cv2.rectangle(frame, (warn_x - 6, warn_y - 18), (warn_x + wt2 + 6, warn_y + 6),
+                              (0, 0, 40), -1)
+                cv2.rectangle(frame, (warn_x - 6, warn_y - 18), (warn_x + wt2 + 6, warn_y + 6),
+                              (0, 0, 255), 2)
+                draw_text(frame, warn_text, (warn_x, warn_y), 0.55, (0, 0, 255), 2)
+        elif adv.get("ear_anomaly", False):
+            warn_text = "EAR ANOMALY"
+            (wt2, ht2), _ = cv2.getTextSize(warn_text, cv2.FONT_HERSHEY_DUPLEX, 0.45, 1)
+            warn_x = x + (bw - wt2) // 2
+            warn_y = min(y + bh + 26, frame.shape[0] - 10)
+            draw_text(frame, warn_text, (warn_x, warn_y), 0.45, (0, 165, 255), 1)
 
     def _draw_corner_brackets(self, frame, x, y, w, h, color, thickness=2, length=22):
         """Draw sleek corner brackets."""
@@ -301,12 +324,13 @@ class ShieldHUD:
         cv2.line(frame, (left, cy), (right, cy), Colors.BORDER, 1)
         cy += 10
 
-        # ── NEURAL CONFIDENCE ──
+        # ── NEURAL CONFIDENCE (Trust Score) ──
         neural = face.neural_confidence if hasattr(face, 'neural_confidence') else 0
-        draw_text(frame, "NEURAL CONFIDENCE", (left, cy + 12), 0.42, Colors.TEXT_DIM, 1)
+        draw_text(frame, "TRUST CONFIDENCE", (left, cy + 12), 0.42, Colors.TEXT_DIM, 1)
         draw_text(frame, f"{neural:.1%}", (right - 58, cy + 12), 0.42, Colors.TEXT_WHITE, 1)
         cy += 18
-        bar_color = Colors.SUCCESS_DOT if neural > 0.7 else (Colors.WARN_DOT if neural > 0.4 else Colors.FAIL_DOT)
+        # Color: green if >0.6 (REAL), yellow if 0.4-0.6 (ambiguous), red if <0.4 (FAKE)
+        bar_color = Colors.SUCCESS_DOT if neural > 0.6 else (Colors.WARN_DOT if neural > 0.4 else Colors.FAIL_DOT)
         draw_progress_bar(frame, left, cy, content_w, 8, neural, 1.0, bar_color)
         cy += 18
 
@@ -324,10 +348,16 @@ class ShieldHUD:
 
         # ── BLINK COUNT ──
         blink_count = adv.get("blinks", 0)
+        blink_pattern = adv.get("blink_pattern_score", 0.5)
         draw_text(frame, "BLINK COUNT", (left, cy + 14), 0.42, Colors.TEXT_DIM, 1)
         blink_color = Colors.SUCCESS_DOT if blink_count > 0 else Colors.WARN_DOT
         draw_text(frame, str(blink_count), (right - 28, cy + 16), 0.65, blink_color, 2)
-        cy += 30
+        cy += 26
+        # Blink pattern score
+        if blink_count > 0:
+            pat_color = Colors.SUCCESS_DOT if blink_pattern > 0.5 else Colors.WARN_DOT
+            draw_text(frame, f"Pattern: {blink_pattern:.0%}", (left + 10, cy + 10), 0.35, pat_color, 1)
+            cy += 16
 
         # ── DISTANCE ──
         dist_cm = adv.get("distance_cm", 0)
@@ -337,7 +367,19 @@ class ShieldHUD:
             draw_text(frame, f"{dist_cm:.0f} cm", (right - 62, cy + 14), 0.48, dist_color, 1)
         else:
             draw_text(frame, "N/A", (right - 38, cy + 14), 0.48, Colors.TEXT_DIM, 1)
-        cy += 30
+        cy += 24
+        
+        # ── HEAD POSE ──
+        head_pose = adv.get("head_pose", {})
+        if head_pose:
+            yaw = head_pose.get("yaw", 0)
+            pitch = head_pose.get("pitch", 0)
+            pose_color = Colors.SUCCESS_DOT if abs(yaw) < 20 and abs(pitch) < 25 else Colors.WARN_DOT
+            draw_text(frame, f"Pose: Y{yaw:+.0f} P{pitch:+.0f}", (left, cy + 12), 0.35, pose_color, 1)
+            # Face age / tracking duration
+            face_age = adv.get("face_age_s", 0)
+            draw_text(frame, f"Track: {face_age:.0f}s", (right - 68, cy + 12), 0.35, Colors.TEXT_DIM, 1)
+            cy += 18
 
         cv2.line(frame, (left, cy), (right, cy), Colors.BORDER, 1)
         cy += 10
@@ -386,9 +428,18 @@ class ShieldHUD:
 
         cy += 6
 
+        # ── SCREEN REPLAY DETECTION ──
+        screen_replay = adv.get("screen_replay", False)
+        if screen_replay:
+            draw_text(frame, "!! SCREEN REPLAY !!", (left, cy + 12), 0.45, (0, 0, 255), 2)
+            cy += 22
+            draw_text(frame, "Phone/tablet screen", (left, cy + 10), 0.35, Colors.FAIL_DOT, 1)
+            cy += 18
+        
         # ── TEXTURE SCORE ──
         tex = face.texture_score if hasattr(face, 'texture_score') else 0
-        draw_text(frame, f"Texture Score: {tex:.1f}", (left, cy + 10), 0.35, Colors.TEXT_DIM, 1)
+        tex_color = Colors.FAIL_DOT if screen_replay else Colors.TEXT_DIM
+        draw_text(frame, f"Texture Score: {tex:.1f}", (left, cy + 10), 0.35, tex_color, 1)
 
         # ── TRACKER ID ──
         tracker_id = adv.get("tracker_id", "-")
